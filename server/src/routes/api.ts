@@ -25,7 +25,10 @@ api.get('/schedule', async (c) => {
         .from(vesselMovements)
         .orderBy(vesselMovements.vesselName, vesselMovements.movementType, desc(vesselMovements.scrapedAt));
 
-    return c.json(schedule);
+    // Filter out any records that are marked as REMOVED
+    const activeSchedule = schedule.filter(item => item.changeType !== 'REMOVED');
+
+    return c.json(activeSchedule);
 });
 
 export default api;

@@ -25,10 +25,11 @@ export function Feed() {
 
 function ChangeCard({ change }: { change: any }) {
     const isNew = change.changeType === 'NEW';
+    const isRemoved = change.changeType === 'REMOVED';
     const prev = change.previousValue;
 
     return (
-        <div className="bg-surface rounded-lg p-4 shadow-lg border-l-4 border-accent">
+        <div className={`bg-surface rounded-lg p-4 shadow-lg border-l-4 ${isRemoved ? 'border-red-500' : 'border-accent'}`}>
             <div className="flex justify-between items-start mb-2">
                 <h3 className="font-bold text-lg text-white flex items-center gap-2">
                     <span className="text-2xl">🚢</span> {change.vesselName}
@@ -42,6 +43,10 @@ function ChangeCard({ change }: { change: any }) {
                 {isNew ? (
                     <div className="flex items-center gap-2 text-emerald-400">
                         <span className="font-semibold">New Schedule Detected</span>
+                    </div>
+                ) : isRemoved ? (
+                    <div className="flex items-center gap-2 text-red-400">
+                        <span className="font-semibold">Vessel Removed from Schedule</span>
                     </div>
                 ) : (
                     <div className="space-y-1">
