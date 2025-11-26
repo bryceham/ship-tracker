@@ -35,10 +35,33 @@ export async function fetchAndParseVessels(): Promise<ScrapedVessel[]> {
 
         if (!vesselName || !timeStr) return;
 
-        const movementType = movementTypeStr.toLowerCase().includes('arr') ? 'Arrival' : 'Departure';
+        let movementType: 'Arrival' | 'Departure' | 'Shift';
+        const lowerType = movementTypeStr.toLowerCase();
+        if (lowerType.includes('arr')) {
+            movementType = 'Arrival';
+        } else if (lowerType.includes('dep')) {
+            movementType = 'Departure';
+        } else if (lowerType.includes('shift')) {
+            movementType = 'Shift';
+        } else {
+            // Default or skip? If we don't know what it is, maybe skip?
+            // But previously it defaulted to Departure. Let's log a warning and skip to be safe, 
+            // or default to Departure if we want to be aggressive.
+            // Given the user's issue, let's skip unknown types to avoid bad data.
+            console.warn(`Unknown movement type: ${movementTypeStr} for ${vesselName}`);
+            return;
+        }
 
         // Determine Berth based on movement
-        const berth = movementType === 'Arrival' ? destination : origin;
+        let berth = '';
+        if (movementType === 'Arrival') {
+            berth = destination;
+        } else if (movementType === 'Departure') {
+            berth = origin;
+        } else if (movementType === 'Shift') {
+            // For Shift, we want to know where it's going.
+            berth = destination;
+        }
 
         // Status - map 'In port' to something meaningful or just use it
         const status = `In Port: ${inPort}`;

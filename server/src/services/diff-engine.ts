@@ -5,7 +5,7 @@ import crypto from 'crypto';
 
 export interface ScrapedVessel {
     vesselName: string;
-    movementType: 'Arrival' | 'Departure';
+    movementType: 'Arrival' | 'Departure' | 'Shift';
     scheduledTime: Date;
     berth: string;
     status: string;
