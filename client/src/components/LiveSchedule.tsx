@@ -5,7 +5,12 @@ import { format } from 'date-fns';
 export function LiveSchedule() {
     const { data: schedule, isLoading, error } = useQuery({
         queryKey: ['schedule'],
-        queryFn: fetchSchedule,
+        queryFn: async () => {
+            const data = await fetchSchedule();
+            return data.sort((a: any, b: any) =>
+                new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime()
+            );
+        },
         refetchInterval: 60000, // Refresh every minute
     });
 

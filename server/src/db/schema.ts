@@ -5,7 +5,9 @@ export const vesselMovements = pgTable('vessel_movements', {
   vesselName: varchar('vessel_name', { length: 255 }).notNull(),
   movementType: varchar('movement_type', { length: 50 }).notNull(), // 'Arrival', 'Departure'
   scheduledTime: timestamp('scheduled_time').notNull(),
-  berth: varchar('berth', { length: 255 }),
+  origin: varchar('origin', { length: 255 }),
+  destination: varchar('destination', { length: 255 }),
+
   status: varchar('status', { length: 100 }),
   changeType: varchar('change_type', { length: 20 }).notNull(), // 'NEW', 'UPDATE', 'UNCHANGED'
   previousValue: jsonb('previous_value'), // Stores the old values if updated

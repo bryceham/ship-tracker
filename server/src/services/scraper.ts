@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { ScrapedVessel, processScrapedData } from './diff-engine';
 import { parse } from 'date-fns';
+import { fromZonedTime } from 'date-fns-tz';
 
 const TARGET_URL = 'https://www.portauthoritynsw.com.au/newcastle-harbour/daily-vessel-movements/';
 
@@ -52,16 +53,7 @@ export async function fetchAndParseVessels(): Promise<ScrapedVessel[]> {
             return;
         }
 
-        // Determine Berth based on movement
-        let berth = '';
-        if (movementType === 'Arrival') {
-            berth = destination;
-        } else if (movementType === 'Departure') {
-            berth = origin;
-        } else if (movementType === 'Shift') {
-            // For Shift, we want to know where it's going.
-            berth = destination;
-        }
+
 
         // Status - map 'In port' to something meaningful or just use it
         const status = `In Port: ${inPort}`;
@@ -73,9 +65,15 @@ export async function fetchAndParseVessels(): Promise<ScrapedVessel[]> {
             const currentYear = new Date().getFullYear();
             // Append year to the string for parsing
             const dateStrWithYear = `${timeStr} ${currentYear}`;
-            // Try parsing with date-fns or native
+
             // Format seems to be "EEE d MMM HH:mm yyyy"
-            scheduledTime = parse(dateStrWithYear, 'EEE d MMM HH:mm yyyy', new Date());
+            // Parse the string into a Date object (which will be in local system time, likely UTC or whatever the server is set to)
+            // But we know this time is actually Sydney time.
+            const parsedLocal = parse(dateStrWithYear, 'EEE d MMM HH:mm yyyy', new Date());
+
+            // Convert the "local" time (which is actually Sydney time) to a true Date object (UTC)
+            // We tell fromZonedTime that 'parsedLocal' represents a time in 'Australia/Sydney'
+            scheduledTime = fromZonedTime(parsedLocal, 'Australia/Sydney');
 
             // Handle year boundary (e.g. scraping in Dec for Jan dates)
             // If the parsed date is more than 6 months in the past, assume it's next year.
@@ -100,7 +98,9 @@ export async function fetchAndParseVessels(): Promise<ScrapedVessel[]> {
             vesselName,
             movementType,
             scheduledTime,
-            berth,
+            origin,
+            destination,
+
             status,
         });
     });

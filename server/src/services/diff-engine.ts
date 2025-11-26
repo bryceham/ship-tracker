@@ -7,12 +7,14 @@ export interface ScrapedVessel {
     vesselName: string;
     movementType: 'Arrival' | 'Departure' | 'Shift';
     scheduledTime: Date;
-    berth: string;
+    origin: string;
+    destination: string;
+
     status: string;
 }
 
 function generateHash(vessel: ScrapedVessel): string {
-    const data = `${vessel.vesselName}|${vessel.movementType}|${vessel.scheduledTime.toISOString()}|${vessel.berth}|${vessel.status}`;
+    const data = `${vessel.vesselName}|${vessel.movementType}|${vessel.scheduledTime.toISOString()}|${vessel.origin}|${vessel.destination}|${vessel.status}`;
     return crypto.createHash('sha256').update(data).digest('hex');
 }
 
@@ -48,7 +50,9 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                 vesselName: vessel.vesselName,
                 movementType: vessel.movementType,
                 scheduledTime: vessel.scheduledTime,
-                berth: vessel.berth,
+                origin: vessel.origin,
+                destination: vessel.destination,
+
                 status: vessel.status,
                 changeType: 'NEW',
                 hash: currentHash,
@@ -66,8 +70,12 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                 if (latestRecord.scheduledTime.getTime() !== vessel.scheduledTime.getTime()) {
                     previousValue.scheduledTime = latestRecord.scheduledTime;
                 }
-                if (latestRecord.berth !== vessel.berth) {
-                    previousValue.berth = latestRecord.berth;
+
+                if (latestRecord.origin !== vessel.origin) {
+                    previousValue.origin = latestRecord.origin;
+                }
+                if (latestRecord.destination !== vessel.destination) {
+                    previousValue.destination = latestRecord.destination;
                 }
                 if (latestRecord.status !== vessel.status) {
                     previousValue.status = latestRecord.status;
@@ -77,7 +85,9 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                     vesselName: vessel.vesselName,
                     movementType: vessel.movementType,
                     scheduledTime: vessel.scheduledTime,
-                    berth: vessel.berth,
+                    origin: vessel.origin,
+                    destination: vessel.destination,
+
                     status: vessel.status,
                     changeType: 'UPDATE',
                     previousValue: previousValue,
@@ -110,7 +120,9 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                     vesselName: record.vesselName,
                     movementType: record.movementType,
                     scheduledTime: record.scheduledTime,
-                    berth: record.berth,
+                    origin: record.origin,
+                    destination: record.destination,
+
                     status: record.status,
                     changeType: 'REMOVED',
                     hash: removedHash,
