@@ -5,12 +5,6 @@ import { fromZonedTime } from 'date-fns-tz';
 
 const TARGET_URL = 'https://www.portauthoritynsw.com.au/newcastle-harbour/daily-vessel-movements/';
 
-let wsNotifier: ((hasChanges: boolean) => void) | null = null;
-
-export function setWebSocketNotifier(callback: (hasChanges: boolean) => void) {
-    wsNotifier = callback;
-}
-
 export async function fetchAndParseVessels(): Promise<ScrapedVessel[]> {
     console.log(`Fetching ${TARGET_URL}...`);
     const response = await fetch(TARGET_URL);
@@ -124,12 +118,7 @@ export async function scrapeVessels(dryRun = false) {
             return vessels;
         }
 
-        const hasChanges = await processScrapedData(vessels);
-
-        // Notify WebSocket clients if changes were detected
-        if (wsNotifier) {
-            wsNotifier(hasChanges);
-        }
+        await processScrapedData(vessels);
 
     } catch (error) {
         console.error('Scraper error:', error);
