@@ -12,7 +12,7 @@ api.get('/changes', async (c) => {
             inArray(vesselMovements.changeType, ['NEW', 'UPDATE', 'REMOVED']),
             gt(vesselMovements.scrapedAt, new Date('2025-11-26T03:12:00')),
             ne(vesselMovements.movementType, 'Shift'),
-            lt(vesselMovements.scheduledTime, new Date('2025-12-03T00:00:00'))
+            lt(vesselMovements.scheduledTime, new Date('2025-12-02T00:00:00'))
         ),
         orderBy: [desc(vesselMovements.scrapedAt)],
         limit: 100,
@@ -27,7 +27,7 @@ api.get('/schedule', async (c) => {
         .from(vesselMovements)
         .where(and(
             ne(vesselMovements.movementType, 'Shift'),
-            lt(vesselMovements.scheduledTime, new Date('2025-12-03T00:00:00'))
+            lt(vesselMovements.scheduledTime, new Date('2025-12-02T00:00:00'))
         ))
         .orderBy(vesselMovements.vesselName, vesselMovements.movementType, desc(vesselMovements.scrapedAt));
 
