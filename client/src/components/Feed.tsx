@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchChanges } from '../lib/api';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ArrowRight, Anchor, Clock, MapPin } from 'lucide-react';
+import { berthTypes, type BerthName } from './berths';
 
 export function Feed() {
     const { data: changes, isLoading, error } = useQuery({
@@ -28,11 +29,20 @@ function ChangeCard({ change }: { change: any }) {
     const isRemoved = change.changeType === 'REMOVED';
     const prev = change.previousValue;
 
+    const isArrival = change.movementType === 'Arrival';
+    const isDeparture = change.movementType === 'Departure';
+    const berth = isArrival ? change.destination : isDeparture ? change.origin : '';
+    const shipType = berth ? berthTypes[berth as BerthName] : undefined;
+
     const scheduledTime = prev?.scheduledTime ? new Date(prev.scheduledTime) : (change.scheduledTime ? new Date(change.scheduledTime) : null);
     const happenedAsScheduled = isRemoved && scheduledTime && new Date(change.scrapedAt) > scheduledTime;
 
+    // Determine card background color based on ship type
+    const isCoal = shipType === 'Coal 🔥';
+    const cardBgClass = isCoal ? 'bg-orange-500/20' : 'bg-surface';
+
     return (
-        <div className={`bg-surface rounded-lg p-4 shadow-lg border-l-4 ${isRemoved ? (happenedAsScheduled ? 'border-emerald-500' : 'border-red-500') : 'border-accent'}`}>
+        <div className={`${cardBgClass} rounded-lg p-4 shadow-lg border-l-4 ${isRemoved ? (happenedAsScheduled ? 'border-emerald-500' : 'border-red-500') : 'border-accent'}`}>
             <div className="flex justify-between items-start mb-2">
                 <h3 className="font-bold text-lg text-white flex items-center gap-2">
                     <span className="text-2xl">🚢</span> {change.vesselName}
@@ -102,8 +112,8 @@ function ChangeCard({ change }: { change: any }) {
 
                 <div className="mt-3 pt-3 border-t border-slate-700 flex gap-4 text-xs text-slate-400">
                     <span>{change.movementType}</span>
-                    <span>•</span>
-                    <span>{change.origin} &rarr; {change.destination}</span>
+                    {shipType && <><span>•</span>
+                        <span>{shipType}</span></>}
                     <span>•</span>
                     <span>{format(new Date(change.scheduledTime), 'MMM d, HH:mm')}</span>
                 </div>

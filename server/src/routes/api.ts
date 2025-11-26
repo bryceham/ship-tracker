@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { db } from '../db';
 import { vesselMovements } from '../db/schema';
-import { desc, eq, inArray, sql, gt, and } from 'drizzle-orm';
+import { desc, eq, inArray, sql, gt, and, ne, lt } from 'drizzle-orm';
 
 const api = new Hono();
 
@@ -10,7 +10,9 @@ api.get('/changes', async (c) => {
     const changes = await db.query.vesselMovements.findMany({
         where: and(
             inArray(vesselMovements.changeType, ['NEW', 'UPDATE', 'REMOVED']),
-            gt(vesselMovements.scrapedAt, new Date('2025-11-26T03:12:00'))
+            gt(vesselMovements.scrapedAt, new Date('2025-11-26T03:12:00')),
+            ne(vesselMovements.movementType, 'shift'),
+            lt(vesselMovements.scheduledTime, new Date('2025-12-03T00:00:00'))
         ),
         orderBy: [desc(vesselMovements.scrapedAt)],
         limit: 50,
@@ -23,6 +25,10 @@ api.get('/schedule', async (c) => {
     const schedule = await db
         .selectDistinctOn([vesselMovements.vesselName, vesselMovements.movementType])
         .from(vesselMovements)
+        .where(and(
+            ne(vesselMovements.movementType, 'shift'),
+            lt(vesselMovements.scheduledTime, new Date('2025-12-03T00:00:00'))
+        ))
         .orderBy(vesselMovements.vesselName, vesselMovements.movementType, desc(vesselMovements.scrapedAt));
 
     // Filter out any records that are marked as REMOVED

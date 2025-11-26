@@ -1,0 +1,25 @@
+export const berthTypes = {
+    "West Basin 3 (W3)": "Grain",
+    "West Basin 4 (W4)": "Cargo",
+    "East Basin 1 (E1)": "Cargo",
+    "East Basin 2 (E2)": "Cargo",
+    "Channel Berth (CH)": "Ships",
+    "Dyke 1 (D1)": "Fuel",
+    "Dyke 2 (D2)": "Minerals",
+    "Dyke 4 (D4)": "Coal 🔥",
+    "Dyke 5 (D5)": "Coal 🔥",
+    "Mayfield 4 (M4)": "Cargo",
+    "Mayfield 5 (M5)": "Petrochemicals",
+    "Mayfield 7 (M7)": "Cargo",
+    "Kooragang 2 (K2)": "Cargo",
+    "Kooragang 3 (K3)": "Cargo",
+    "Kooragang 4 (K4)": "Coal 🔥",
+    "Kooragang 5 (K5)": "Coal 🔥",
+    "Kooragang 6 (K6)": "Coal 🔥",
+    "Kooragang 7 (K7)": "Coal 🔥",
+    "Kooragang 8 (K8)": "Coal 🔥",
+    "Kooragang 9 (K9)": "Coal 🔥",
+    "Kooragang 10 (K10)": "Coal 🔥",
+} as const;
+
+export type BerthName = keyof typeof berthTypes;
