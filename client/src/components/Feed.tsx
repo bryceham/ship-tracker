@@ -28,8 +28,11 @@ function ChangeCard({ change }: { change: any }) {
     const isRemoved = change.changeType === 'REMOVED';
     const prev = change.previousValue;
 
+    const scheduledTime = prev?.scheduledTime ? new Date(prev.scheduledTime) : (change.scheduledTime ? new Date(change.scheduledTime) : null);
+    const happenedAsScheduled = isRemoved && scheduledTime && new Date(change.scrapedAt) > scheduledTime;
+
     return (
-        <div className={`bg-surface rounded-lg p-4 shadow-lg border-l-4 ${isRemoved ? 'border-red-500' : 'border-accent'}`}>
+        <div className={`bg-surface rounded-lg p-4 shadow-lg border-l-4 ${isRemoved ? (happenedAsScheduled ? 'border-emerald-500' : 'border-red-500') : 'border-accent'}`}>
             <div className="flex justify-between items-start mb-2">
                 <h3 className="font-bold text-lg text-white flex items-center gap-2">
                     <span className="text-2xl">🚢</span> {change.vesselName}
@@ -45,23 +48,28 @@ function ChangeCard({ change }: { change: any }) {
                         <span className="font-semibold">New Schedule Detected</span>
                     </div>
                 ) : isRemoved ? (
-                    <div className="flex items-center gap-2 text-red-400">
-                        <span className="font-semibold">Vessel Removed from Schedule</span>
-                    </div>
+                    happenedAsScheduled ? (
+                        <div className="flex items-center gap-2 text-emerald-400">
+                            <span className="font-semibold">
+                                Vessel {change.movementType?.toLowerCase() === 'arrival' ? 'arrived' : 'departed'} as scheduled
+                            </span>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-2 text-red-400">
+                            <span className="font-semibold">Vessel Removed from Schedule</span>
+                        </div>
+                    )
                 ) : (
                     <div className="space-y-1">
                         {prev?.scheduledTime && (
                             <div className="flex items-center gap-2">
                                 <Clock className="w-4 h-4 text-slate-500" />
                                 <span className="line-through text-slate-500">
-                                    {format(new Date(prev.scheduledTime), 'HH:mm')}
+                                    {format(new Date(prev.scheduledTime), 'HH:mm (MMM d)')}
                                 </span>
                                 <ArrowRight className="w-3 h-3 text-slate-500" />
                                 <span className="text-amber-400 font-semibold">
-                                    {format(new Date(change.scheduledTime), 'HH:mm')}
-                                </span>
-                                <span className="text-xs text-slate-500 ml-1">
-                                    ({format(new Date(change.scheduledTime), 'MMM d')})
+                                    {format(new Date(change.scheduledTime), 'HH:mm (MMM d)')}
                                 </span>
                             </div>
                         )}
