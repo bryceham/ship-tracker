@@ -23,7 +23,7 @@ export function LiveSchedule() {
                 <h2 className="text-xl font-bold text-white">Live Schedule</h2>
             </div>
             <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-slate-300">
+                <table className="w-full text-left text-sm text-slate-300 min-w-[800px]">
                     <thead className="bg-slate-900/50 text-xs uppercase text-slate-400">
                         <tr>
                             <th className="px-4 py-3">Vessel</th>
