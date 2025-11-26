@@ -28,5 +28,8 @@
     "@types/node": "^24.10.1",
     "@types/pg": "^8.15.6",
     "drizzle-kit": "^0.31.7"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   }
 }
