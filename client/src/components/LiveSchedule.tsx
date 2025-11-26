@@ -29,7 +29,8 @@ export function LiveSchedule() {
                             <th className="px-4 py-3">Vessel</th>
                             <th className="px-4 py-3">Movement</th>
                             <th className="px-4 py-3">Time</th>
-                            <th className="px-4 py-3">Berth</th>
+                            <th className="px-4 py-3">Origin</th>
+                            <th className="px-4 py-3">Destination</th>
                             <th className="px-4 py-3">Status</th>
                         </tr>
                     </thead>
@@ -44,7 +45,8 @@ export function LiveSchedule() {
                                     </span>
                                 </td>
                                 <td className="px-4 py-3">{format(new Date(row.scheduledTime), 'MMM d, HH:mm')}</td>
-                                <td className="px-4 py-3">{row.berth}</td>
+                                <td className="px-4 py-3">{row.origin}</td>
+                                <td className="px-4 py-3">{row.destination}</td>
                                 <td className="px-4 py-3">{row.status}</td>
                             </tr>
                         ))}

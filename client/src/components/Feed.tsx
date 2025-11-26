@@ -60,12 +60,20 @@ function ChangeCard({ change }: { change: any }) {
                                 </span>
                             </div>
                         )}
-                        {prev?.berth && (
+                        {prev?.origin && (
                             <div className="flex items-center gap-2">
                                 <MapPin className="w-4 h-4 text-slate-500" />
-                                <span className="line-through text-slate-500">{prev.berth}</span>
+                                <span className="line-through text-slate-500">{prev.origin}</span>
                                 <ArrowRight className="w-3 h-3 text-slate-500" />
-                                <span className="text-white">{change.berth}</span>
+                                <span className="text-white">{change.origin}</span>
+                            </div>
+                        )}
+                        {prev?.destination && (
+                            <div className="flex items-center gap-2">
+                                <MapPin className="w-4 h-4 text-slate-500" />
+                                <span className="line-through text-slate-500">{prev.destination}</span>
+                                <ArrowRight className="w-3 h-3 text-slate-500" />
+                                <span className="text-white">{change.destination}</span>
                             </div>
                         )}
                         {prev?.status && (
@@ -82,7 +90,7 @@ function ChangeCard({ change }: { change: any }) {
                 <div className="mt-3 pt-3 border-t border-slate-700 flex gap-4 text-xs text-slate-400">
                     <span>{change.movementType}</span>
                     <span>•</span>
-                    <span>{change.berth}</span>
+                    <span>{change.origin} &rarr; {change.destination}</span>
                     <span>•</span>
                     <span>{format(new Date(change.scheduledTime), 'MMM d, HH:mm')}</span>
                 </div>

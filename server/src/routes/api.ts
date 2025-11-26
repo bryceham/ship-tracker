@@ -10,7 +10,7 @@ api.get('/changes', async (c) => {
     const changes = await db.query.vesselMovements.findMany({
         where: and(
             inArray(vesselMovements.changeType, ['NEW', 'UPDATE', 'REMOVED']),
-            gt(vesselMovements.scrapedAt, new Date('2025-11-26T03:10:00'))
+            gt(vesselMovements.scrapedAt, new Date('2025-11-26T03:12:00'))
         ),
         orderBy: [desc(vesselMovements.scrapedAt)],
         limit: 50,
@@ -21,9 +21,9 @@ api.get('/changes', async (c) => {
 // GET /api/schedule
 api.get('/schedule', async (c) => {
     const schedule = await db
-        .selectDistinctOn([vesselMovements.vesselName])
+        .selectDistinctOn([vesselMovements.vesselName, vesselMovements.movementType])
         .from(vesselMovements)
-        .orderBy(vesselMovements.vesselName, desc(vesselMovements.scrapedAt));
+        .orderBy(vesselMovements.vesselName, vesselMovements.movementType, desc(vesselMovements.scrapedAt));
 
     return c.json(schedule);
 });
