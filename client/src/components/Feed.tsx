@@ -14,10 +14,26 @@ export function Feed() {
     if (isLoading) return <div className="p-4">Loading feed...</div>;
     if (error) return <div className="p-4 text-red-400">Error loading feed</div>;
 
+    // Filter out changes where only the status field changed
+    const filteredChanges = changes?.filter((change: any) => {
+        if (change.changeType !== 'UPDATE') return true;
+
+        const prev = change.previousValue;
+        if (!prev) return true;
+
+        // Check if previousValue only contains the status field
+        const prevKeys = Object.keys(prev);
+        if (prevKeys.length === 1 && prevKeys[0] === 'status') {
+            return false; // Filter out status-only changes
+        }
+
+        return true;
+    }) || [];
+
     return (
         <div className="space-y-4">
             <h2 className="text-xl font-bold text-white mb-4">Latest Updates</h2>
-            {changes.map((change: any) => (
+            {filteredChanges.map((change: any) => (
                 <ChangeCard key={change.id} change={change} />
             ))}
         </div>
@@ -114,8 +130,6 @@ function ChangeCard({ change }: { change: any }) {
                     <span>{change.movementType}</span>
                     {shipType && <><span>•</span>
                         <span>{shipType}</span></>}
-                    <span>•</span>
-                    <span>{format(new Date(change.scheduledTime), 'MMM d, HH:mm')}</span>
                 </div>
             </div>
         </div>

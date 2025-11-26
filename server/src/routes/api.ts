@@ -11,11 +11,11 @@ api.get('/changes', async (c) => {
         where: and(
             inArray(vesselMovements.changeType, ['NEW', 'UPDATE', 'REMOVED']),
             gt(vesselMovements.scrapedAt, new Date('2025-11-26T03:12:00')),
-            ne(vesselMovements.movementType, 'shift'),
+            ne(vesselMovements.movementType, 'Shift'),
             lt(vesselMovements.scheduledTime, new Date('2025-12-03T00:00:00'))
         ),
         orderBy: [desc(vesselMovements.scrapedAt)],
-        limit: 50,
+        limit: 100,
     });
     return c.json(changes);
 });
@@ -26,7 +26,7 @@ api.get('/schedule', async (c) => {
         .selectDistinctOn([vesselMovements.vesselName, vesselMovements.movementType])
         .from(vesselMovements)
         .where(and(
-            ne(vesselMovements.movementType, 'shift'),
+            ne(vesselMovements.movementType, 'Shift'),
             lt(vesselMovements.scheduledTime, new Date('2025-12-03T00:00:00'))
         ))
         .orderBy(vesselMovements.vesselName, vesselMovements.movementType, desc(vesselMovements.scrapedAt));
