@@ -3,9 +3,14 @@ import { fetchSchedule } from '../lib/api';
 import { format } from 'date-fns';
 import { berthTypes } from './berths';
 import type { BerthName } from './berths';
+import { useEffect } from 'react';
 
-export function LiveSchedule() {
-    const { data: schedule, isLoading, error } = useQuery({
+interface LiveScheduleProps {
+    onChangesDetected: (callback: () => void) => void;
+}
+
+export function LiveSchedule({ onChangesDetected }: LiveScheduleProps) {
+    const { data: schedule, isLoading, error, refetch } = useQuery({
         queryKey: ['schedule'],
         queryFn: async () => {
             const data = await fetchSchedule();
@@ -15,6 +20,15 @@ export function LiveSchedule() {
         },
         refetchInterval: 60000, // Refresh every minute
     });
+
+    // Register callback for WebSocket change notifications
+    useEffect(() => {
+        const cleanup = onChangesDetected(() => {
+            console.log('LiveSchedule: Changes detected, refetching...');
+            refetch();
+        });
+        return cleanup;
+    }, [onChangesDetected, refetch]);
 
     if (isLoading) return <div className="p-4">Loading schedule...</div>;
     if (error) return <div className="p-4 text-red-400">Error loading schedule</div>;

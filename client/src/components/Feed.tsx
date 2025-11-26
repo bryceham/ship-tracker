@@ -3,13 +3,27 @@ import { fetchChanges } from '../lib/api';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ArrowRight, Anchor, Clock, MapPin } from 'lucide-react';
 import { berthTypes, type BerthName } from './berths';
+import { useEffect } from 'react';
 
-export function Feed() {
-    const { data: changes, isLoading, error } = useQuery({
+interface FeedProps {
+    onChangesDetected: (callback: () => void) => void;
+}
+
+export function Feed({ onChangesDetected }: FeedProps) {
+    const { data: changes, isLoading, error, refetch } = useQuery({
         queryKey: ['changes'],
         queryFn: fetchChanges,
         refetchInterval: 30000,
     });
+
+    // Register callback for WebSocket change notifications
+    useEffect(() => {
+        const cleanup = onChangesDetected(() => {
+            console.log('Feed: Changes detected, refetching...');
+            refetch();
+        });
+        return cleanup;
+    }, [onChangesDetected, refetch]);
 
     if (isLoading) return <div className="p-4">Loading feed...</div>;
     if (error) return <div className="p-4 text-red-400">Error loading feed</div>;
@@ -63,7 +77,7 @@ function ChangeCard({ change }: { change: any }) {
                 <h3 className="font-bold text-lg text-white flex items-center gap-2">
                     <span className="text-2xl">🚢</span> {change.vesselName}
                 </h3>
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-slate-400" title={new Date(change.scrapedAt).toLocaleString()}>
                     {formatDistanceToNow(new Date(change.scrapedAt), { addSuffix: true })}
                 </span>
             </div>

@@ -18,13 +18,15 @@ function generateHash(vessel: ScrapedVessel): string {
     return crypto.createHash('sha256').update(data).digest('hex');
 }
 
-export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
+export async function processScrapedData(scrapedVessels: ScrapedVessel[]): Promise<boolean> {
     console.log(`Processing ${scrapedVessels.length} scraped vessels...`);
+
+    let hasChanges = false;
 
     // Safety check: If scrape returns 0 vessels, don't mark everything as removed.
     if (scrapedVessels.length === 0) {
         console.warn('Scrape returned 0 vessels. Skipping processing to avoid mass deletion.');
-        return;
+        return false;
     }
 
     // Create a set of unique keys for the current scrape: "VesselName|MovementType"
@@ -46,6 +48,7 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
         if (!latestRecord) {
             // New vessel movement
             console.log(`[NEW] ${vessel.vesselName} (${vessel.movementType})`);
+            hasChanges = true;
             await db.insert(vesselMovements).values({
                 vesselName: vessel.vesselName,
                 movementType: vessel.movementType,
@@ -64,6 +67,7 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
             } else {
                 // Changed
                 console.log(`[UPDATE] ${vessel.vesselName} (${vessel.movementType})`);
+                hasChanges = true;
 
                 // Calculate diff
                 const previousValue: Record<string, any> = {};
@@ -113,6 +117,7 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
             // Check if it was already marked as removed.
             if (record.changeType !== 'REMOVED') {
                 console.log(`[REMOVED] ${record.vesselName} (${record.movementType})`);
+                hasChanges = true;
 
                 const removedHash = crypto.createHash('sha256').update(record.hash + '|REMOVED').digest('hex');
 
@@ -130,4 +135,6 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
             }
         }
     }
+
+    return hasChanges;
 }
