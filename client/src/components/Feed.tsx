@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchChanges } from '../lib/api';
 import { formatDistanceToNow, format } from 'date-fns';
-import { ArrowRight, Anchor, Clock, MapPin } from 'lucide-react';
+import { ArrowRight, Clock, MapPin } from 'lucide-react';
 import { berthTypes, type BerthName } from './berths';
 
 export function Feed() {
@@ -53,6 +53,35 @@ function ChangeCard({ change }: { change: any }) {
     const scheduledTime = prev?.scheduledTime ? new Date(prev.scheduledTime) : (change.scheduledTime ? new Date(change.scheduledTime) : null);
     const happenedAsScheduled = isRemoved && scheduledTime && new Date(change.scrapedAt) > scheduledTime;
 
+    // Calculate time difference for schedule changes
+    const getTimeChangeDescription = () => {
+        if (!prev?.scheduledTime || !change.scheduledTime) return null;
+
+        const oldTime = new Date(prev.scheduledTime);
+        const newTime = new Date(change.scheduledTime);
+        const diffMs = newTime.getTime() - oldTime.getTime();
+        const diffHours = Math.abs(diffMs) / (1000 * 60 * 60);
+
+        const movementType = isArrival ? 'arrival' : isDeparture ? 'departure' : 'movement';
+        const direction = diffMs > 0 ? 'delayed' : 'brought forward';
+
+        let timeDescription = '';
+        if (diffHours < 1) {
+            const diffMinutes = Math.round(Math.abs(diffMs) / (1000 * 60));
+            timeDescription = `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
+        } else if (diffHours < 24) {
+            const hours = Math.round(diffHours);
+            timeDescription = `${hours} hour${hours !== 1 ? 's' : ''}`;
+        } else {
+            const days = Math.round(diffHours / 24);
+            timeDescription = `${days} day${days !== 1 ? 's' : ''}`;
+        }
+
+        return `Vessel ${movementType} ${direction} by ${timeDescription}`;
+    };
+
+    const timeChangeDescription = getTimeChangeDescription();
+
     // Determine card background color based on ship type
     const isCoal = shipType === 'Coal 🔥';
     const cardBgClass = isCoal ? 'bg-orange-500/20' : 'bg-surface';
@@ -76,7 +105,7 @@ function ChangeCard({ change }: { change: any }) {
                 ) : isRemoved ? (
                     happenedAsScheduled ? (
                         <div className="flex items-center gap-2 text-emerald-400">
-                            <span className="font-semibold">
+                            <span>
                                 Vessel {change.movementType?.toLowerCase() === 'arrival' ? 'arrived' : 'departed'} as scheduled
                             </span>
                         </div>
@@ -87,6 +116,11 @@ function ChangeCard({ change }: { change: any }) {
                     )
                 ) : (
                     <div className="space-y-1">
+                        {timeChangeDescription && (
+                            <div className="mb-2 text-slate-400">
+                                {timeChangeDescription}
+                            </div>
+                        )}
                         {prev?.scheduledTime && (
                             <div className="flex items-center gap-2">
                                 <Clock className="w-4 h-4 text-slate-500" />
@@ -97,6 +131,11 @@ function ChangeCard({ change }: { change: any }) {
                                 <span className="text-amber-400 font-semibold">
                                     {format(new Date(change.scheduledTime), 'HH:mm (MMM d)')}
                                 </span>
+                            </div>
+                        )}
+                        {(prev?.origin || prev?.destination) && (
+                            <div className="mb-2 text-slate-400">
+                                Vessel's allocated berth changed
                             </div>
                         )}
                         {prev?.origin && (
@@ -113,14 +152,6 @@ function ChangeCard({ change }: { change: any }) {
                                 <span className="line-through text-slate-500">{prev.destination}</span>
                                 <ArrowRight className="w-3 h-3 text-slate-500" />
                                 <span className="text-white">{change.destination}</span>
-                            </div>
-                        )}
-                        {prev?.status && (
-                            <div className="flex items-center gap-2">
-                                <Anchor className="w-4 h-4 text-slate-500" />
-                                <span className="line-through text-slate-500">{prev.status}</span>
-                                <ArrowRight className="w-3 h-3 text-slate-500" />
-                                <span className="text-white">{change.status}</span>
                             </div>
                         )}
                     </div>
