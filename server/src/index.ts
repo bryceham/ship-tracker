@@ -36,8 +36,8 @@ serve({
     port
 });
 
-// Scraper Cron (every 5 minutes)
-const INTERVAL = 5 * 60 * 1000;
+// Scraper Cron (every 1 minute)
+const INTERVAL = 60 * 1000;
 console.log('Starting scraper service...');
 scrapeVessels(); // Run immediately on start
 setInterval(() => {
