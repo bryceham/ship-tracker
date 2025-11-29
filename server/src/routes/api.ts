@@ -25,15 +25,14 @@ api.get('/schedule', async (c) => {
     const schedule = await db
         .selectDistinctOn([vesselMovements.vesselName, vesselMovements.movementType])
         .from(vesselMovements)
-        .where(and(
-            ne(vesselMovements.movementType, 'Shift'),
-            lt(vesselMovements.scheduledTime, new Date('2025-12-02T00:00:00'))
-        ))
+        .where(ne(vesselMovements.movementType, 'Shift'))
         .orderBy(vesselMovements.vesselName, vesselMovements.movementType, desc(vesselMovements.scrapedAt));
 
     // Filter out any records that are marked as REMOVED
-    const activeSchedule = schedule.filter(item => item.changeType !== 'REMOVED');
-
+    const activeSchedule = schedule.filter(item => item.changeType !== 'REMOVED').filter(movement => 
+  new Date(movement.scheduledTime) < new Date('2025-12-02T00:00:00')
+);
+    
     return c.json(activeSchedule);
 });
 
