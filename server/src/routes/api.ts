@@ -34,4 +34,14 @@ api.get('/schedule', async (c) => {
     return c.json(activeSchedule);
 });
 
+// GET /api/removed
+api.get('/removed', async (c) => {
+    const removed = await db.query.vesselMovements.findMany({
+        where: eq(vesselMovements.changeType, 'REMOVED'),
+        orderBy: [desc(vesselMovements.scrapedAt)],
+        limit: 20,
+    });
+    return c.json(removed);
+});
+
 export default api;

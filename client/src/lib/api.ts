@@ -11,3 +11,9 @@ export async function fetchChanges() {
     if (!res.ok) throw new Error('Failed to fetch changes');
     return res.json();
 }
+
+export async function fetchRemoved() {
+    const res = await fetch(`${API_URL}/removed`);
+    if (!res.ok) throw new Error('Failed to fetch removed vessels');
+    return res.json();
+}

@@ -43,8 +43,8 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
             orderBy: [desc(vesselMovements.scrapedAt)],
         });
 
-        if (!latestRecord) {
-            // New vessel movement
+        if (!latestRecord || latestRecord.changeType === 'REMOVED') {
+            // New vessel movement (or reappearing after being removed)
             console.log(`[NEW] ${vessel.vesselName} (${vessel.movementType})`);
             await db.insert(vesselMovements).values({
                 vesselName: vessel.vesselName,
