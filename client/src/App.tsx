@@ -4,6 +4,7 @@ import { Route, Switch, Link } from 'wouter';
 import { Feed } from './components/Feed';
 import { LiveSchedule } from './components/LiveSchedule';
 import { PublicStatus } from './pages/PublicStatus';
+import { Trips } from './pages/Trips';
 
 const queryClient = new QueryClient();
 
@@ -15,11 +16,18 @@ function Dashboard() {
           <h1 className="text-3xl font-bold text-white mb-2">Newcastle Harbour <span className="text-primary">Schedule Monitor</span></h1>
           <p className="text-slate-400">Tracking vessel schedule changes in real-time.</p>
         </div>
-        <Link href="/status">
-          <a className="text-sm text-slate-500 hover:text-primary transition-colors">
-            View Public Status Page →
-          </a>
-        </Link>
+        <div className="flex gap-4">
+          <Link href="/trips">
+            <a className="text-sm text-slate-500 hover:text-primary transition-colors">
+              View Trip Logs
+            </a>
+          </Link>
+          <Link href="/status">
+            <a className="text-sm text-slate-500 hover:text-primary transition-colors">
+              View Public Status Page →
+            </a>
+          </Link>
+        </div>
       </header>
 
       <main className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -40,6 +48,7 @@ function App() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/status" component={PublicStatus} />
+        <Route path="/trips" component={Trips} />
       </Switch>
     </QueryClientProvider>
   );

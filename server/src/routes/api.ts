@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { db } from '../db';
-import { vesselMovements, vessels, anchorageEvents } from '../db/schema';
+import { vesselMovements, vessels, anchorageEvents, vesselTrips } from '../db/schema';
 import { eq, desc, and, gt, sql, inArray, ne, lt } from 'drizzle-orm';
 
 const api = new Hono();
@@ -79,6 +79,27 @@ api.get('/stats/anchorage-wait-times', async (c) => {
         .orderBy(sql`to_char(${anchorageEvents.departureTime} AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney', 'YYYY-MM-DD')`);
 
     return c.json(stats);
+});
+
+// GET /api/trips
+api.get('/trips', async (c) => {
+    const trips = await db
+        .select({
+            id: vesselTrips.id,
+            vesselName: vessels.name,
+            status: vesselTrips.status,
+            scheduledArrival: vesselTrips.scheduledArrival,
+            actualArrivalHeads: vesselTrips.actualArrivalHeads,
+            actualBerthed: vesselTrips.actualBerthed,
+            actualDepartedBerth: vesselTrips.actualDepartedBerth,
+            actualDepartureHeads: vesselTrips.actualDepartureHeads,
+        })
+        .from(vesselTrips)
+        .leftJoin(vessels, eq(vesselTrips.vesselId, vessels.id))
+        .orderBy(desc(vesselTrips.scheduledArrival))
+        .limit(100);
+
+    return c.json(trips);
 });
 
 export default api;
