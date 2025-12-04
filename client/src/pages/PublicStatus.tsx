@@ -6,6 +6,7 @@ import { berthTypes, type BerthName } from '../components/berths';
 import { ArrowRight, Anchor, Clock } from 'lucide-react';
 
 import { DailyMovementsChart } from '../components/DailyMovementsChart';
+import { AnchorageChart } from '../components/AnchorageChart';
 
 export function PublicStatus() {
     const { data: schedule, isLoading, error } = useQuery({
@@ -213,7 +214,10 @@ export function PublicStatus() {
             </div>
 
             <div className="space-y-4 mt-8">
-                <DailyMovementsChart />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <DailyMovementsChart />
+                    <AnchorageChart />
+                </div>
                 <h2 className="text-2xl font-bold flex items-center gap-3 text-slate-200">
                     <ArrowRight className="w-6 h-6 text-slate-400" />
                     Recently Departed / Removed

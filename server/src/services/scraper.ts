@@ -34,6 +34,10 @@ export async function fetchAndParseVessels(): Promise<ScrapedVessel[]> {
         const destination = getText('.views-field-destination');
         const inPort = getText('.views-field-in-port');
 
+        const vesselType = getText('.views-field-vessel-type');
+        const vesselAgent = getText('.views-field-vessel-agent');
+        const etaBradleys = getText('.views-field-eta-bradleys');
+
         if (!vesselName || !timeStr) return;
 
         let movementType: 'Arrival' | 'Departure' | 'Shift';
@@ -100,6 +104,9 @@ export async function fetchAndParseVessels(): Promise<ScrapedVessel[]> {
             scheduledTime,
             origin,
             destination,
+            vesselType,
+            vesselAgent,
+            etaBradleys,
 
             status,
         });

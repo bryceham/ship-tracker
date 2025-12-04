@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { db } from '../db';
-import { vesselMovements } from '../db/schema';
-import { desc, eq, inArray, sql, gt, and, ne, lt } from 'drizzle-orm';
+import { vesselMovements, vessels, anchorageEvents } from '../db/schema';
+import { eq, desc, and, gt, sql, inArray, ne, lt } from 'drizzle-orm';
 
 const api = new Hono();
 
@@ -60,6 +60,25 @@ api.get('/stats/daily-movements', async (c) => {
         .orderBy(sql`to_char(${vesselMovements.scrapedAt} AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney', 'YYYY-MM-DD')`);
 
     return c.json(dailyStats);
+});
+
+// GET /api/stats/anchorage-wait-times
+api.get('/stats/anchorage-wait-times', async (c) => {
+    const stats = await db
+        .select({
+            date: sql<string>`to_char(${anchorageEvents.departureTime} AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney', 'YYYY-MM-DD')`,
+            avgDuration: sql<number>`avg(${anchorageEvents.durationMinutes})::int`,
+            count: sql<number>`count(*)::int`
+        })
+        .from(anchorageEvents)
+        .where(and(
+            eq(anchorageEvents.status, 'COMPLETED'),
+            gt(anchorageEvents.departureTime, sql`now() - interval '30 days'`)
+        ))
+        .groupBy(sql`to_char(${anchorageEvents.departureTime} AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney', 'YYYY-MM-DD')`)
+        .orderBy(sql`to_char(${anchorageEvents.departureTime} AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney', 'YYYY-MM-DD')`);
+
+    return c.json(stats);
 });
 
 export default api;

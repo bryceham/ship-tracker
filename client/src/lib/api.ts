@@ -17,3 +17,9 @@ export async function fetchRemoved() {
     if (!res.ok) throw new Error('Failed to fetch removed vessels');
     return res.json();
 }
+
+export async function fetchAnchorageStats() {
+    const res = await fetch(`${API_URL}/stats/anchorage-wait-times`);
+    if (!res.ok) throw new Error('Failed to fetch anchorage stats');
+    return res.json();
+}

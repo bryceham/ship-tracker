@@ -3,6 +3,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import api from './routes/api';
+import { connectAISStream } from './services/ais';
 import { scrapeVessels } from './services/scraper';
 import dotenv from 'dotenv';
 import { readFile } from 'fs/promises';
@@ -43,3 +44,6 @@ scrapeVessels(); // Run immediately on start
 setInterval(() => {
     scrapeVessels();
 }, INTERVAL);
+
+// Start AIS Stream
+connectAISStream();

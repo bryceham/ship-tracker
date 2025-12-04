@@ -1,6 +1,6 @@
 import { db } from '../db';
-import { vesselMovements } from '../db/schema';
-import { eq, desc, and } from 'drizzle-orm';
+import { vesselMovements, vessels, vesselTrips } from '../db/schema';
+import { eq, desc, and, isNull } from 'drizzle-orm';
 import crypto from 'crypto';
 
 export interface ScrapedVessel {
@@ -9,12 +9,15 @@ export interface ScrapedVessel {
     scheduledTime: Date;
     origin: string;
     destination: string;
+    vesselType: string;
+    vesselAgent: string;
+    etaBradleys: string;
 
     status: string;
 }
 
 function generateHash(vessel: ScrapedVessel): string {
-    const data = `${vessel.vesselName}|${vessel.movementType}|${vessel.scheduledTime.toISOString()}|${vessel.origin}|${vessel.destination}|${vessel.status}`;
+    const data = `${vessel.vesselName}|${vessel.movementType}|${vessel.scheduledTime.toISOString()}|${vessel.origin}|${vessel.destination}|${vessel.vesselType}|${vessel.vesselAgent}|${vessel.etaBradleys}|${vessel.status}`;
     return crypto.createHash('sha256').update(data).digest('hex');
 }
 
@@ -27,18 +30,81 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
         return;
     }
 
-    // Create a set of unique keys for the current scrape: "VesselName|MovementType"
-    const scrapedKeys = new Set(scrapedVessels.map(v => `${v.vesselName}|${v.movementType}`));
+    // Create a set of unique keys for the current scrape: "VesselName|MovementType|Origin|Destination"
+    const scrapedKeys = new Set(scrapedVessels.map(v => `${v.vesselName}|${v.movementType}|${v.origin}|${v.destination}`));
 
     // 1. Process Scraped Vessels (New & Updates)
     for (const vessel of scrapedVessels) {
+        // --- NEW: Sync with vessels and vessel_trips tables ---
+        let vesselId: number;
+        const existingVessel = await db.query.vessels.findFirst({
+            where: eq(vessels.name, vessel.vesselName)
+        });
+
+        if (existingVessel) {
+            vesselId = existingVessel.id;
+            // Update type if we have it and didn't before
+            if (!existingVessel.vesselType && vessel.vesselType) {
+                await db.update(vessels)
+                    .set({ vesselType: vessel.vesselType })
+                    .where(eq(vessels.id, vesselId));
+            }
+        } else {
+            const res = await db.insert(vessels).values({
+                name: vessel.vesselName,
+                vesselType: vessel.vesselType,
+                lastSeenAt: new Date(),
+            }).returning({ id: vessels.id });
+            vesselId = res[0].id;
+        }
+
+        // Update Trip Info
+        if (vessel.movementType === 'Arrival') {
+            const trip = await db.query.vesselTrips.findFirst({
+                where: and(
+                    eq(vesselTrips.vesselId, vesselId),
+                    isNull(vesselTrips.actualDepartureHeads)
+                ),
+                orderBy: desc(vesselTrips.id)
+            });
+
+            if (trip) {
+                await db.update(vesselTrips)
+                    .set({ scheduledArrival: vessel.scheduledTime })
+                    .where(eq(vesselTrips.id, trip.id));
+            } else {
+                await db.insert(vesselTrips).values({
+                    vesselId,
+                    scheduledArrival: vessel.scheduledTime,
+                    status: 'INBOUND'
+                });
+            }
+        } else if (vessel.movementType === 'Departure') {
+            const trip = await db.query.vesselTrips.findFirst({
+                where: and(
+                    eq(vesselTrips.vesselId, vesselId),
+                    isNull(vesselTrips.actualDepartureHeads)
+                ),
+                orderBy: desc(vesselTrips.id)
+            });
+
+            if (trip) {
+                await db.update(vesselTrips)
+                    .set({ scheduledDeparture: vessel.scheduledTime })
+                    .where(eq(vesselTrips.id, trip.id));
+            }
+        }
+        // -----------------------------------------------------
+
         const currentHash = generateHash(vessel);
 
-        // Find the latest record for this vessel AND movement type
+        // Find the latest record for this vessel AND movement type AND origin AND destination
         const latestRecord = await db.query.vesselMovements.findFirst({
             where: and(
                 eq(vesselMovements.vesselName, vessel.vesselName),
-                eq(vesselMovements.movementType, vessel.movementType)
+                eq(vesselMovements.movementType, vessel.movementType),
+                eq(vesselMovements.origin, vessel.origin),
+                eq(vesselMovements.destination, vessel.destination)
             ),
             orderBy: [desc(vesselMovements.scrapedAt)],
         });
@@ -52,6 +118,9 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                 scheduledTime: vessel.scheduledTime,
                 origin: vessel.origin,
                 destination: vessel.destination,
+                vesselType: vessel.vesselType,
+                vesselAgent: vessel.vesselAgent,
+                etaBradleys: vessel.etaBradleys,
 
                 status: vessel.status,
                 changeType: 'NEW',
@@ -77,6 +146,15 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                 if (latestRecord.destination !== vessel.destination) {
                     previousValue.destination = latestRecord.destination;
                 }
+                if (latestRecord.vesselType !== vessel.vesselType) {
+                    previousValue.vesselType = latestRecord.vesselType;
+                }
+                if (latestRecord.vesselAgent !== vessel.vesselAgent) {
+                    previousValue.vesselAgent = latestRecord.vesselAgent;
+                }
+                if (latestRecord.etaBradleys !== vessel.etaBradleys) {
+                    previousValue.etaBradleys = latestRecord.etaBradleys;
+                }
                 if (latestRecord.status !== vessel.status) {
                     previousValue.status = latestRecord.status;
                 }
@@ -87,6 +165,9 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                     scheduledTime: vessel.scheduledTime,
                     origin: vessel.origin,
                     destination: vessel.destination,
+                    vesselType: vessel.vesselType,
+                    vesselAgent: vessel.vesselAgent,
+                    etaBradleys: vessel.etaBradleys,
 
                     status: vessel.status,
                     changeType: 'UPDATE',
@@ -101,13 +182,33 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
     // Find all vessel movements that are in the DB (latest record is NOT 'REMOVED') 
     // but are NOT in the scrapedKeys set.
 
-    // Get all distinct vessel movements (Name + Type) from DB
-    const allMovements = await db.selectDistinctOn([vesselMovements.vesselName, vesselMovements.movementType])
+    // Get all distinct vessel movements (Name + Type + Origin + Dest) from DB
+    const allMovements = await db.selectDistinctOn([
+        vesselMovements.vesselName,
+        vesselMovements.movementType,
+        vesselMovements.movementType,
+        vesselMovements.origin,
+        vesselMovements.destination,
+        vesselMovements.vesselType,
+        vesselMovements.vesselAgent,
+        vesselMovements.etaBradleys
+    ])
         .from(vesselMovements)
-        .orderBy(vesselMovements.vesselName, vesselMovements.movementType, desc(vesselMovements.scrapedAt));
+        .orderBy(
+            vesselMovements.vesselName,
+            vesselMovements.movementType,
+            vesselMovements.origin,
+            vesselMovements.destination,
+            vesselMovements.vesselType,
+            vesselMovements.vesselAgent,
+            vesselMovements.etaBradleys,
+            desc(vesselMovements.scrapedAt)
+        );
 
     for (const record of allMovements) {
-        const key = `${record.vesselName}|${record.movementType}`;
+        // Handle potential nulls in DB for origin/dest if they exist, though schema allows nulls, scraper usually puts strings.
+        // Using || '' to be safe and match the scraped keys which are strings.
+        const key = `${record.vesselName}|${record.movementType}|${record.origin || ''}|${record.destination || ''}`;
         if (!scrapedKeys.has(key)) {
             // This movement is missing from the scrape.
             // Check if it was already marked as removed.
@@ -122,6 +223,9 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                     scheduledTime: record.scheduledTime,
                     origin: record.origin,
                     destination: record.destination,
+                    vesselType: record.vesselType,
+                    vesselAgent: record.vesselAgent,
+                    etaBradleys: record.etaBradleys,
 
                     status: record.status,
                     changeType: 'REMOVED',
