@@ -44,4 +44,22 @@ api.get('/removed', async (c) => {
     return c.json(removed);
 });
 
+// GET /api/stats/daily-movements
+api.get('/stats/daily-movements', async (c) => {
+    const dailyStats = await db
+        .select({
+            date: sql<string>`to_char(${vesselMovements.scrapedAt} AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney', 'YYYY-MM-DD')`,
+            count: sql<number>`count(*)::int`,
+        })
+        .from(vesselMovements)
+        .where(and(
+            eq(vesselMovements.changeType, 'REMOVED'),
+            gt(vesselMovements.scrapedAt, sql`now() - interval '28 days'`)
+        ))
+        .groupBy(sql`to_char(${vesselMovements.scrapedAt} AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney', 'YYYY-MM-DD')`)
+        .orderBy(sql`to_char(${vesselMovements.scrapedAt} AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney', 'YYYY-MM-DD')`);
+
+    return c.json(dailyStats);
+});
+
 export default api;

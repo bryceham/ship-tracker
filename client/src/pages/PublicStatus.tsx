@@ -5,6 +5,8 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { berthTypes, type BerthName } from '../components/berths';
 import { ArrowRight, Anchor, Clock } from 'lucide-react';
 
+import { DailyMovementsChart } from '../components/DailyMovementsChart';
+
 export function PublicStatus() {
     const { data: schedule, isLoading, error } = useQuery({
         queryKey: ['schedule'],
@@ -211,6 +213,7 @@ export function PublicStatus() {
             </div>
 
             <div className="space-y-4 mt-8">
+                <DailyMovementsChart />
                 <h2 className="text-2xl font-bold flex items-center gap-3 text-slate-200">
                     <ArrowRight className="w-6 h-6 text-slate-400" />
                     Recently Departed / Removed
