@@ -6,6 +6,8 @@ import { LiveSchedule } from './components/LiveSchedule';
 import { PublicStatus } from './pages/PublicStatus';
 import { Trips } from './pages/Trips';
 
+import { LiveMapPage } from './pages/LiveMapPage';
+
 const queryClient = new QueryClient();
 
 function Dashboard() {
@@ -17,6 +19,11 @@ function Dashboard() {
           <p className="text-slate-400">Tracking vessel schedule changes in real-time.</p>
         </div>
         <div className="flex gap-4">
+          <Link href="/map">
+            <a className="text-sm text-slate-500 hover:text-primary transition-colors">
+              Live Map
+            </a>
+          </Link>
           <Link href="/trips">
             <a className="text-sm text-slate-500 hover:text-primary transition-colors">
               View Trip Logs
@@ -49,6 +56,7 @@ function App() {
         <Route path="/" component={Dashboard} />
         <Route path="/status" component={PublicStatus} />
         <Route path="/trips" component={Trips} />
+        <Route path="/map" component={LiveMapPage} />
       </Switch>
     </QueryClientProvider>
   );

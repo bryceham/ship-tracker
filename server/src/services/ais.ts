@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import { db } from '../db';
-import { vessels, vesselTrips, anchorageEvents } from '../db/schema';
+import { vessels, vesselTrips, anchorageEvents, vesselPositions } from '../db/schema';
 import { eq, and, desc, isNull, not } from 'drizzle-orm';
 import * as geolib from 'geolib';
 
@@ -74,6 +74,9 @@ async function handlePositionReport(message: any) {
     const longitude = report.Longitude;
     const speed = report.Sog; // Speed over ground
     const navStatus = report.NavigationalStatus; // 1 = At Anchor
+    const cog = report.Cog; // Course over ground
+    const rot = report.Rot; // Rate of turn
+    const heading = report.TrueHeading; // True heading
 
     // 1. Update Vessel Last Seen
     // We try to find the vessel by MMSI. If not found, we can't do much until we get StaticData or link it via name.
@@ -105,8 +108,23 @@ async function handlePositionReport(message: any) {
             // Update entry/exit times if state changed
             lastEnteredHarbourAt: !existingVessel.isInsideHarbour && isInsideHarbour ? now : undefined,
             lastLeftHarbourAt: existingVessel.isInsideHarbour && !isInsideHarbour ? now : undefined,
+            latitude,
+            longitude,
         })
         .where(eq(vessels.id, existingVessel.id));
+
+    // Insert into vessel_positions history
+    await db.insert(vesselPositions).values({
+        vesselId: existingVessel.id,
+        latitude,
+        longitude,
+        speed,
+        heading,
+        cog,
+        rot,
+        navStatus,
+        timestamp: now,
+    });
 
     // 2. Trip Management
     if (!existingVessel.isInsideHarbour && isInsideHarbour) {

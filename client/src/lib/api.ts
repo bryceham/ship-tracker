@@ -29,3 +29,9 @@ export async function fetchTrips() {
     if (!res.ok) throw new Error('Failed to fetch trips');
     return res.json();
 }
+
+export async function fetchLiveMap() {
+    const res = await fetch(`${API_URL}/live-map`);
+    if (!res.ok) throw new Error('Failed to fetch live map data');
+    return res.json();
+}

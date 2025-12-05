@@ -102,4 +102,31 @@ api.get('/trips', async (c) => {
     return c.json(trips);
 });
 
+// GET /api/live-map
+api.get('/live-map', async (c) => {
+    // Get all vessels seen in the last hour
+    const liveVessels = await db.query.vessels.findMany({
+        where: gt(vessels.lastSeenAt, sql`now() - interval '1 hour'`),
+        columns: {
+            id: true,
+            name: true,
+            vesselType: true,
+            latitude: true,
+            longitude: true,
+            lastSeenAt: true,
+            isInsideHarbour: true,
+            // This field doesn't exist on vessels table, it's on vesselMovements or inferred. 
+            // Actually schema says vessels has no status field. 
+            // But we might want to return if it's anchored or alongside based on other tables?
+            // For now let's just return what's on the vessel table.
+        }
+    });
+
+    // We might want to enrich this with status from trips or anchorage events?
+    // For simplicity, let's just return the raw vessel data first.
+    // The frontend can infer status or we can add it later.
+
+    return c.json(liveVessels);
+});
+
 export default api;

@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, jsonb, index, integer, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, jsonb, index, integer, boolean, doublePrecision } from 'drizzle-orm/pg-core';
 
 export const vesselMovements = pgTable('vessel_movements', {
   id: serial('id').primaryKey(),
@@ -37,6 +37,8 @@ export const vessels = pgTable('vessels', {
   lastEnteredHarbourAt: timestamp('last_entered_harbour_at'),
   lastLeftHarbourAt: timestamp('last_left_harbour_at'),
   isInsideHarbour: boolean('is_inside_harbour').default(false),
+  latitude: doublePrecision('latitude'),
+  longitude: doublePrecision('longitude'),
 });
 
 export const vesselTrips = pgTable('vessel_trips', {
@@ -58,4 +60,22 @@ export const anchorageEvents = pgTable('anchorage_events', {
   departureTime: timestamp('departure_time'),
   durationMinutes: integer('duration_minutes'),
   status: varchar('status', { length: 50 }), // 'ANCHORED', 'COMPLETED'
+});
+
+export const vesselPositions = pgTable('vessel_positions', {
+  id: serial('id').primaryKey(),
+  vesselId: integer('vessel_id').references(() => vessels.id),
+  latitude: doublePrecision('latitude').notNull(),
+  longitude: doublePrecision('longitude').notNull(),
+  speed: doublePrecision('speed'),
+  heading: doublePrecision('heading'),
+  cog: doublePrecision('cog'),
+  rot: doublePrecision('rot'),
+  navStatus: integer('nav_status'),
+  timestamp: timestamp('timestamp').defaultNow().notNull(),
+}, (table) => {
+  return {
+    vesselIdIdx: index('vessel_id_idx').on(table.vesselId),
+    timestampIdx: index('timestamp_idx').on(table.timestamp),
+  };
 });
