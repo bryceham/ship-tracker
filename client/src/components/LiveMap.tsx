@@ -131,8 +131,14 @@ function getTugStatus(tug: Vessel, allVessels: Vessel[]) {
     }
 
     // Check for escorting
-    // Find closest non-tug vessel
-    const ships = allVessels.filter(v => !v.vesselType.toLowerCase().includes('tug') && !v.vesselType.toLowerCase().includes('52') && v.id !== tug.id);
+    // Find closest non-tug vessel THAT IS ALSO MOVING
+    // We filter out stationary ships to avoid false positives when moving past a berth
+    const ships = allVessels.filter(v =>
+        !v.vesselType.toLowerCase().includes('tug') &&
+        !v.vesselType.toLowerCase().includes('52') &&
+        v.id !== tug.id &&
+        (v.speed || 0) > 0.5
+    );
 
     let closestShip: Vessel | null = null;
     let minDist = Infinity;
