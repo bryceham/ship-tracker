@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { fetchLiveMap } from '../lib/api';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -14,6 +14,7 @@ interface Vessel {
     cog?: number;
     lastSeenAt: string;
     isInsideHarbour: boolean;
+    trail?: { latitude: number; longitude: number }[];
 }
 
 const createVesselIcon = (vessel: Vessel) => {
@@ -72,26 +73,38 @@ export function LiveMap() {
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
                 {vessels.map((vessel) => (
-                    vessel.latitude && vessel.longitude && (
-                        <Marker
-                            key={vessel.id}
-                            position={[vessel.latitude, vessel.longitude]}
-                            icon={createVesselIcon(vessel)}
-                        >
-                            <Popup>
-                                <div className="text-slate-900">
-                                    <strong className="block text-lg">{vessel.name}</strong>
-                                    <span className="text-sm text-slate-600">{vessel.vesselType}</span>
-                                    <div className="mt-1 text-xs text-slate-500">
-                                        Heading: {vessel.heading || vessel.cog || 'N/A'}°
+                    <div key={vessel.id}>
+                        {vessel.trail && vessel.trail.length > 1 && (
+                            <Polyline
+                                positions={vessel.trail.map(p => [p.latitude, p.longitude])}
+                                pathOptions={{
+                                    color: vessel.vesselType?.toLowerCase().includes('tug') ? '#f97316' : '#3b82f6',
+                                    weight: 2,
+                                    opacity: 0.5,
+                                    dashArray: '5, 5'
+                                }}
+                            />
+                        )}
+                        {vessel.latitude && vessel.longitude && (
+                            <Marker
+                                position={[vessel.latitude, vessel.longitude]}
+                                icon={createVesselIcon(vessel)}
+                            >
+                                <Popup>
+                                    <div className="text-slate-900">
+                                        <strong className="block text-lg">{vessel.name}</strong>
+                                        <span className="text-sm text-slate-600">{vessel.vesselType}</span>
+                                        <div className="mt-1 text-xs text-slate-500">
+                                            Heading: {vessel.heading || vessel.cog || 'N/A'}°
+                                        </div>
+                                        <div className="mt-1 text-xs text-slate-500">
+                                            Last seen: {new Date(vessel.lastSeenAt).toLocaleTimeString()}
+                                        </div>
                                     </div>
-                                    <div className="mt-1 text-xs text-slate-500">
-                                        Last seen: {new Date(vessel.lastSeenAt).toLocaleTimeString()}
-                                    </div>
-                                </div>
-                            </Popup>
-                        </Marker>
-                    )
+                                </Popup>
+                            </Marker>
+                        )}
+                    </div>
                 ))}
             </MapContainer>
         </div>

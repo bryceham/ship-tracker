@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { db } from '../db';
-import { vesselMovements, vessels, anchorageEvents, vesselTrips } from '../db/schema';
+import { vesselMovements, vessels, anchorageEvents, vesselTrips, vesselPositions } from '../db/schema';
 import { eq, desc, and, gt, sql, inArray, ne, lt } from 'drizzle-orm';
 
 const api = new Hono();
@@ -118,18 +118,54 @@ api.get('/live-map', async (c) => {
             rot: true,
             lastSeenAt: true,
             isInsideHarbour: true,
-            // This field doesn't exist on vessels table, it's on vesselMovements or inferred. 
-            // Actually schema says vessels has no status field. 
-            // But we might want to return if it's anchored or alongside based on other tables?
-            // For now let's just return what's on the vessel table.
+        },
+        with: {
+            // We need to define the relation in schema.ts first, or just query separately.
+            // Since we haven't defined the relation in schema.ts yet (we only added the table),
+            // let's query trails separately for now to avoid schema complexity in this step.
         }
     });
 
-    // We might want to enrich this with status from trips or anchorage events?
-    // For simplicity, let's just return the raw vessel data first.
-    // The frontend can infer status or we can add it later.
+    // Fetch trails for these vessels
+    const vesselIds = liveVessels.map(v => v.id);
+    let trails: Record<number, { latitude: number; longitude: number }[]> = {};
 
-    return c.json(liveVessels);
+    if (vesselIds.length > 0) {
+        // This is a bit inefficient (N+1ish or big query), but for < 50 vessels it's fine.
+        // Better approach: Window function to get last 20 positions for each vesselId in the list.
+
+        // For simplicity, let's just fetch recent positions for these vessels and group them in JS.
+        // Limit to last 1 hour of positions.
+        const positions = await db.query.vesselPositions.findMany({
+            where: and(
+                inArray(vesselPositions.vesselId, vesselIds),
+                gt(vesselPositions.timestamp, sql`now() - interval '1 hour'`)
+            ),
+            orderBy: [desc(vesselPositions.timestamp)],
+            // We can't easily limit per group in simple drizzle query without raw SQL.
+            // So we fetch all (within 1 hour) and slice in JS.
+        });
+
+        // Group by vesselId
+        for (const pos of positions) {
+            if (pos.vesselId) {
+                if (!trails[pos.vesselId]) {
+                    trails[pos.vesselId] = [];
+                }
+                // Limit to 20 points per vessel
+                if (trails[pos.vesselId].length < 20) {
+                    trails[pos.vesselId].push({ latitude: pos.latitude, longitude: pos.longitude });
+                }
+            }
+        }
+    }
+
+    const result = liveVessels.map(v => ({
+        ...v,
+        trail: trails[v.id] || []
+    }));
+
+    return c.json(result);
 });
 
 export default api;
