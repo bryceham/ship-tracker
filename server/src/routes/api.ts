@@ -120,6 +120,7 @@ api.get('/live-map', async (c) => {
             width: true,
             lastSeenAt: true,
             isInsideHarbour: true,
+            speed: true,
         },
         with: {
             // We need to define the relation in schema.ts first, or just query separately.

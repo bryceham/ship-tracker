@@ -113,6 +113,8 @@ async function handlePositionReport(message: any) {
             heading,
             cog,
             rot,
+            speed,
+            navStatus,
         })
         .where(eq(vessels.id, existingVessel.id));
 
