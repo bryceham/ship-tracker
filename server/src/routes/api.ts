@@ -116,6 +116,8 @@ api.get('/live-map', async (c) => {
             heading: true,
             cog: true,
             rot: true,
+            length: true,
+            width: true,
             lastSeenAt: true,
             isInsideHarbour: true,
         },

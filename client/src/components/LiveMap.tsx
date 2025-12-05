@@ -15,15 +15,34 @@ interface Vessel {
     lastSeenAt: string;
     isInsideHarbour: boolean;
     trail?: { latitude: number; longitude: number }[];
+    length?: number;
+    width?: number;
 }
 
 const createVesselIcon = (vessel: Vessel) => {
-    const isTug = vessel.vesselType?.toLowerCase().includes('tug');
+    const isTug = vessel.vesselType?.toLowerCase().includes('52');
     const color = isTug ? '#f97316' : '#3b82f6'; // Orange for tugs, Blue for others
     const rotation = vessel.heading || vessel.cog || 0;
 
+    // Calculate size based on vessel dimensions (meters)
+    // Map scale: 1px approx 1m at high zoom, but we need to be visible.
+    // Let's use a base scale factor.
+    // Default to 24x24 if no dimensions.
+
+    // A 200m ship should be bigger than a 30m tug.
+    // Let's say 1px = 2m for visualization purposes on the map?
+    // Or just map length directly to pixels with a clamp.
+
+    const length = vessel.length || 24;
+    const width = vessel.width || 8;
+
+    // Scale down a bit so they aren't huge
+    const scale = 0.5;
+    const iconHeight = Math.max(20, length * scale);
+    const iconWidth = Math.max(10, width * scale);
+
     const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="white" stroke-width="2" style="transform: rotate(${rotation}deg); width: 100%; height: 100%;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="white" stroke-width="1" style="transform: rotate(${rotation}deg); width: 100%; height: 100%;">
             <path d="M12 2L4.5 20.29C4.21 21.01 4.93 21.75 5.66 21.5L12 19.25L18.34 21.5C19.07 21.75 19.79 21.01 19.5 20.29L12 2Z" />
         </svg>
     `;
@@ -31,8 +50,8 @@ const createVesselIcon = (vessel: Vessel) => {
     return L.divIcon({
         html: svg,
         className: '',
-        iconSize: [24, 24],
-        iconAnchor: [12, 12],
+        iconSize: [iconWidth, iconHeight],
+        iconAnchor: [iconWidth / 2, iconHeight / 2],
     });
 };
 
@@ -97,6 +116,11 @@ export function LiveMap() {
                                         <div className="mt-1 text-xs text-slate-500">
                                             Heading: {vessel.heading || vessel.cog || 'N/A'}°
                                         </div>
+                                        {vessel.length && (
+                                            <div className="mt-1 text-xs text-slate-500">
+                                                Dims: {vessel.length}m x {vessel.width}m
+                                            </div>
+                                        )}
                                         <div className="mt-1 text-xs text-slate-500">
                                             Last seen: {new Date(vessel.lastSeenAt).toLocaleTimeString()}
                                         </div>
