@@ -30,49 +30,90 @@ const getVesselOpacity = (lastSeenAt: string) => {
     return 0.4;
 };
 
+// Color mapping for vessel types
+const getVesselColor = (type: string) => {
+    const t = type?.toLowerCase() || '';
+
+    // Tugs / Special Craft
+    if (t.includes('tug') || t.includes('52') || t.includes('31') || t.includes('32')) return '#f97316'; // Orange
+
+    // Cargo / Bulk Carriers
+    if (t.includes('cargo') || t.includes('bulk') || (parseInt(t) >= 70 && parseInt(t) <= 79)) return '#22c55e'; // Green
+
+    // Tankers
+    if (t.includes('tanker') || (parseInt(t) >= 80 && parseInt(t) <= 89)) return '#ef4444'; // Red
+
+    // Passenger
+    if (t.includes('passenger') || (parseInt(t) >= 60 && parseInt(t) <= 69)) return '#eab308'; // Yellow
+
+    // Fishing
+    if (t.includes('fishing') || t.includes('30')) return '#a855f7'; // Purple
+
+    // Pleasure / Yacht
+    if (t.includes('pleasure') || t.includes('yacht') || t.includes('36') || t.includes('37')) return '#ec4899'; // Pink
+
+    // Default / Other
+    return '#94a3b8'; // Slate 400
+};
+
 const createVesselIcon = (vessel: Vessel, zoom: number) => {
     const isTug = vessel.vesselType?.toLowerCase().includes('tug') || vessel.vesselType?.toLowerCase().includes('52');
-    const color = isTug ? '#f97316' : '#3b82f6'; // Orange for tugs, Blue for others
+    const color = getVesselColor(vessel.vesselType);
     const rotation = vessel.heading || vessel.cog || 0;
     const opacity = getVesselOpacity(vessel.lastSeenAt);
 
-    // Dynamic scaling based on zoom
-    // Base scale at zoom 13 is 0.08 (approx 1px = 12m)
-    // As zoom decreases, scale should decrease to keep "real world" size
-    // As zoom increases, scale should increase
-    const zoomDiff = zoom - 13;
-    const scaleFactor = Math.pow(2, zoomDiff);
-    const currentScale = 0.08 * scaleFactor;
+    // Hybrid Sizing Strategy
+    // Zoom < 14: Fixed size markers (easier to see/navigate)
+    // Zoom >= 14: Real-world physical size (accurate for berthing)
+    const ZOOM_THRESHOLD = 14;
 
-    const length = vessel.length || 24;
-    const width = vessel.width || 8;
+    let pixelLength, pixelWidth, path;
+    let containerSize;
 
-    // Calculate dimensions in pixels
-    // We enforce a minimum size so they don't disappear completely when zoomed out
-    const minLength = 8;
-    const minWidth = 4;
+    if (zoom < ZOOM_THRESHOLD) {
+        // FIXED SIZE MODE
+        const size = 12; // Base size in pixels
+        pixelLength = size;
+        pixelWidth = size * 0.7;
 
-    const pixelLength = Math.max(minLength, length * currentScale);
-    const pixelWidth = Math.max(minWidth, width * currentScale);
+        // Simple directional arrow for everything when zoomed out
+        path = `M0,${pixelLength} L${pixelWidth / 2},0 L${pixelWidth},${pixelLength} L${pixelWidth / 2},${pixelLength * 0.75} Z`;
 
-    // Make the container square based on the largest dimension to allow safe rotation
-    const maxSize = Math.max(pixelLength, pixelWidth) * 1.5;
-
-    let path = '';
-    if (isTug) {
-        // Boxy shape for tugs
-        path = `M0,0 L${pixelWidth},0 L${pixelWidth},${pixelLength} L0,${pixelLength} Z`;
+        containerSize = size * 2; // Enough room for rotation
     } else {
-        // Pointed shape for ships
-        const bowLength = pixelLength * 0.25;
-        path = `M0,${pixelLength} L${pixelWidth},${pixelLength} L${pixelWidth},${bowLength} L${pixelWidth / 2},0 L0,${bowLength} Z`;
+        // REAL WORLD SIZE MODE
+        // Calculate meters per pixel at this latitude (approx -33 for Newcastle)
+        // Formula: 156543.03392 * cos(lat * PI / 180) / 2^zoom
+        // cos(-33) approx 0.838
+        const metersPerPixel = 131183 / Math.pow(2, zoom);
+
+        const realLength = vessel.length || 24;
+        const realWidth = vessel.width || 8;
+
+        pixelLength = realLength / metersPerPixel;
+        pixelWidth = realWidth / metersPerPixel;
+
+        // Ensure it's at least visible if data is missing
+        pixelLength = Math.max(10, pixelLength);
+        pixelWidth = Math.max(4, pixelWidth);
+
+        if (isTug) {
+            // Boxy shape for tugs
+            path = `M0,0 L${pixelWidth},0 L${pixelWidth},${pixelLength} L0,${pixelLength} Z`;
+        } else {
+            // Detailed ship shape
+            const bowLength = pixelLength * 0.2;
+            path = `M0,${pixelLength} L${pixelWidth},${pixelLength} L${pixelWidth},${bowLength} L${pixelWidth / 2},0 L0,${bowLength} Z`;
+        }
+
+        containerSize = Math.max(pixelLength, pixelWidth) * 1.5;
     }
 
     const svg = `
         <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${pixelWidth} ${pixelLength}"
                 style="width: ${pixelWidth}px; height: ${pixelLength}px; transform: rotate(${rotation}deg); opacity: ${opacity};"
-                fill="${color}" stroke="white" stroke-width="1">
+                fill="${color}" stroke="white" stroke-width="${zoom < ZOOM_THRESHOLD ? 1.5 : 1}">
                 <path d="${path}" />
             </svg>
         </div>
@@ -81,8 +122,8 @@ const createVesselIcon = (vessel: Vessel, zoom: number) => {
     return L.divIcon({
         html: svg,
         className: '',
-        iconSize: [maxSize, maxSize],
-        iconAnchor: [maxSize / 2, maxSize / 2],
+        iconSize: [containerSize, containerSize],
+        iconAnchor: [containerSize / 2, containerSize / 2],
     });
 };
 
@@ -216,7 +257,7 @@ export function LiveMap() {
                                 <Polyline
                                     positions={vessel.trail.map(p => [p.latitude, p.longitude])}
                                     pathOptions={{
-                                        color: vessel.vesselType?.toLowerCase().includes('52') ? '#f97316' : '#3b82f6',
+                                        color: getVesselColor(vessel.vesselType),
                                         weight: selectedVessel?.id === vessel.id ? 3 : 1,
                                         opacity: selectedVessel?.id === vessel.id ? 0.8 : 0.3,
                                         dashArray: '5, 5'
@@ -236,6 +277,41 @@ export function LiveMap() {
                     ))}
                 </MapContainer>
 
+                {/* Legend Overlay */}
+                <div className="absolute top-4 right-4 bg-slate-900/90 backdrop-blur border border-slate-700 p-3 rounded-lg shadow-xl z-[1000] text-xs">
+                    <h4 className="font-bold text-slate-300 mb-2">Vessel Types</h4>
+                    <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                            <span className="text-slate-400">Cargo</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-red-500"></span>
+                            <span className="text-slate-400">Tanker</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-orange-500"></span>
+                            <span className="text-slate-400">Tug / Special</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
+                            <span className="text-slate-400">Passenger</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-purple-500"></span>
+                            <span className="text-slate-400">Fishing</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-pink-500"></span>
+                            <span className="text-slate-400">Pleasure</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-slate-400"></span>
+                            <span className="text-slate-400">Other</span>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Vessel Details Bottom Sheet */}
                 {selectedVessel && (
                     <div className="absolute bottom-4 left-4 right-4 bg-slate-900/95 backdrop-blur border border-slate-700 p-4 rounded-lg shadow-xl z-[1000] animate-in slide-in-from-bottom-10 fade-in duration-300">
@@ -247,7 +323,7 @@ export function LiveMap() {
                                         {selectedVessel.vesselType}
                                     </span>
                                 </h3>
-                                <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div className="mt-2 grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                                     <div>
                                         <span className="block text-slate-500 text-xs">Dimensions</span>
                                         <span className="text-slate-300">{selectedVessel.length || '?'}m x {selectedVessel.width || '?'}m</span>
@@ -259,6 +335,10 @@ export function LiveMap() {
                                     <div>
                                         <span className="block text-slate-500 text-xs">Speed</span>
                                         <span className="text-slate-300">{selectedVessel.speed ? `${selectedVessel.speed.toFixed(1)} kn` : 'N/A'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-slate-500 text-xs">Last Seen</span>
+                                        <span className="text-slate-300">{new Date(selectedVessel.lastSeenAt).toLocaleTimeString()}</span>
                                     </div>
                                     <div>
                                         <span className="block text-slate-500 text-xs">Status</span>
@@ -298,7 +378,7 @@ export function LiveMap() {
                             >
                                 <div className="flex justify-between items-start mb-2">
                                     <h3 className="font-semibold text-slate-200">{tug.name}</h3>
-                                    <span className="text-xs text-slate-500">{new Date(tug.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                    <span className="text-xs text-slate-500">Last seen: {new Date(tug.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                 </div>
                                 <div className="flex items-center gap-2 text-sm">
                                     <span className={`font-medium ${color}`}>
