@@ -4,28 +4,36 @@ import { fetchLiveMap } from '../lib/api';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// Fix for default marker icon in React Leaflet
-import icon from 'leaflet/dist/images/marker-icon.png';
-import iconShadow from 'leaflet/dist/images/marker-shadow.png';
-
-let DefaultIcon = L.icon({
-    iconUrl: icon,
-    shadowUrl: iconShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41]
-});
-
-L.Marker.prototype.options.icon = DefaultIcon;
-
 interface Vessel {
     id: number;
     name: string;
     vesselType: string;
     latitude: number;
     longitude: number;
+    heading?: number;
+    cog?: number;
     lastSeenAt: string;
     isInsideHarbour: boolean;
 }
+
+const createVesselIcon = (vessel: Vessel) => {
+    const isTug = vessel.vesselType?.toLowerCase().includes('tug');
+    const color = isTug ? '#f97316' : '#3b82f6'; // Orange for tugs, Blue for others
+    const rotation = vessel.heading || vessel.cog || 0;
+
+    const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="white" stroke-width="2" style="transform: rotate(${rotation}deg); width: 100%; height: 100%;">
+            <path d="M12 2L4.5 20.29C4.21 21.01 4.93 21.75 5.66 21.5L12 19.25L18.34 21.5C19.07 21.75 19.79 21.01 19.5 20.29L12 2Z" />
+        </svg>
+    `;
+
+    return L.divIcon({
+        html: svg,
+        className: '',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+    });
+};
 
 export function LiveMap() {
     const [vessels, setVessels] = useState<Vessel[]>([]);
@@ -65,11 +73,18 @@ export function LiveMap() {
                 />
                 {vessels.map((vessel) => (
                     vessel.latitude && vessel.longitude && (
-                        <Marker key={vessel.id} position={[vessel.latitude, vessel.longitude]}>
+                        <Marker
+                            key={vessel.id}
+                            position={[vessel.latitude, vessel.longitude]}
+                            icon={createVesselIcon(vessel)}
+                        >
                             <Popup>
                                 <div className="text-slate-900">
                                     <strong className="block text-lg">{vessel.name}</strong>
                                     <span className="text-sm text-slate-600">{vessel.vesselType}</span>
+                                    <div className="mt-1 text-xs text-slate-500">
+                                        Heading: {vessel.heading || vessel.cog || 'N/A'}°
+                                    </div>
                                     <div className="mt-1 text-xs text-slate-500">
                                         Last seen: {new Date(vessel.lastSeenAt).toLocaleTimeString()}
                                     </div>

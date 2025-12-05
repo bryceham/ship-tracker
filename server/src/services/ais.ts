@@ -110,6 +110,9 @@ async function handlePositionReport(message: any) {
             lastLeftHarbourAt: existingVessel.isInsideHarbour && !isInsideHarbour ? now : undefined,
             latitude,
             longitude,
+            heading,
+            cog,
+            rot,
         })
         .where(eq(vessels.id, existingVessel.id));
 

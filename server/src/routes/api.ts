@@ -113,6 +113,9 @@ api.get('/live-map', async (c) => {
             vesselType: true,
             latitude: true,
             longitude: true,
+            heading: true,
+            cog: true,
+            rot: true,
             lastSeenAt: true,
             isInsideHarbour: true,
             // This field doesn't exist on vessels table, it's on vesselMovements or inferred. 

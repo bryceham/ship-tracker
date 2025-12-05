@@ -39,6 +39,9 @@ export const vessels = pgTable('vessels', {
   isInsideHarbour: boolean('is_inside_harbour').default(false),
   latitude: doublePrecision('latitude'),
   longitude: doublePrecision('longitude'),
+  heading: doublePrecision('heading'),
+  cog: doublePrecision('cog'),
+  rot: doublePrecision('rot'),
 });
 
 export const vesselTrips = pgTable('vessel_trips', {
