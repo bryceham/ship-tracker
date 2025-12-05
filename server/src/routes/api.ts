@@ -118,6 +118,7 @@ api.get('/live-map', async (c) => {
             rot: true,
             length: true,
             width: true,
+            draught: true,
             lastSeenAt: true,
             isInsideHarbour: true,
             speed: true,
@@ -202,6 +203,7 @@ api.get('/live-map/history', async (c) => {
             vesselType: vessels.vesselType,
             length: vessels.length,
             width: vessels.width,
+            draught: vessels.draught,
         })
         .from(vessels)
         .where(inArray(vessels.id, uniqueVesselIds));

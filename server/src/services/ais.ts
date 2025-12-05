@@ -174,6 +174,7 @@ async function handleStaticData(message: any) {
     const length = report.Dimension.A + report.Dimension.B;
     const width = report.Dimension.C + report.Dimension.D;
     const imo = report.ImoNumber;
+    const draught = report.MaximumStaticDraught;
 
     // Upsert Vessel
     // Try to find by MMSI first
@@ -197,6 +198,7 @@ async function handleStaticData(message: any) {
             vesselType: type.toString(),
             length,
             width,
+            draught,
             lastSeenAt: new Date(),
         }).where(eq(vessels.id, vessel.id));
     } else {
@@ -210,6 +212,7 @@ async function handleStaticData(message: any) {
                 vesselType: type.toString(),
                 length,
                 width,
+                draught,
                 lastSeenAt: new Date(),
             });
         } catch (e) {

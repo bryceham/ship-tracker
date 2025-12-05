@@ -43,6 +43,7 @@ export const vessels = pgTable('vessels', {
   cog: doublePrecision('cog'),
   rot: doublePrecision('rot'),
   speed: doublePrecision('speed'),
+  draught: doublePrecision('draught'),
   navStatus: integer('nav_status'),
 });
 
