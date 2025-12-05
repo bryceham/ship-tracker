@@ -39,7 +39,7 @@ export function connectAISStream() {
             APIKey: apiKey,
             BoundingBoxes: [NEWCASTLE_BBOX],
             FiltersShipMMSI: [],
-            FilterMessageTypes: ["PositionReport", "ShipStaticData"],
+            FilterMessageTypes: ["PositionReport", "ShipStaticData", "StandardClassBPositionReport", "StaticDataReport"],
         };
         socket.send(JSON.stringify(subscriptionMessage));
     });
@@ -51,6 +51,10 @@ export function connectAISStream() {
                 await handlePositionReport(message);
             } else if (message.MessageType === 'ShipStaticData') {
                 await handleStaticData(message);
+            } else if (message.MessageType === 'StandardClassBPositionReport') {
+                await handleClassBPositionReport(message);
+            } else if (message.MessageType === 'StaticDataReport') {
+                await handleStaticDataReport(message);
             }
         } catch (error) {
             console.error('Error processing AIS message:', error);
@@ -336,5 +340,162 @@ async function handleAnchorageEnd(vesselId: number, time: Date) {
                 status: 'COMPLETED'
             })
             .where(eq(anchorageEvents.id, activeEvent.id));
+    }
+}
+
+async function handleClassBPositionReport(message: any) {
+    const report = message.Message.StandardClassBPositionReport;
+    const mmsi = report.UserID;
+    const latitude = report.Latitude;
+    const longitude = report.Longitude;
+    const speed = report.Sog; // Speed over ground
+    const cog = report.Cog; // Course over ground
+    const heading = report.TrueHeading; // True heading
+    // Class B doesn't typically provide NavStatus or ROT in the standard report
+
+    // 1. Update Vessel Last Seen
+    const existingVessel = await db.query.vessels.findFirst({
+        where: eq(vessels.mmsi, mmsi),
+    });
+
+    if (!existingVessel) {
+        return;
+    }
+
+    const now = new Date();
+    const isInsideHarbour = geolib.isPointInPolygon(
+        { latitude, longitude },
+        HARBOUR_ENTRANCE_POLYGON
+    ) || geolib.isPointInPolygon(
+        { latitude, longitude },
+        INNER_HARBOUR_POLYGON
+    );
+
+    // Update vessel status
+    await db.update(vessels)
+        .set({
+            lastSeenAt: now,
+            isInsideHarbour: isInsideHarbour,
+            // Update entry/exit times if state changed
+            lastEnteredHarbourAt: !existingVessel.isInsideHarbour && isInsideHarbour ? now : undefined,
+            lastLeftHarbourAt: existingVessel.isInsideHarbour && !isInsideHarbour ? now : undefined,
+            latitude,
+            longitude,
+            heading,
+            cog,
+            speed,
+            // No NavStatus or ROT for Class B usually
+        })
+        .where(eq(vessels.id, existingVessel.id));
+
+    // Insert into vessel_positions history
+    await db.insert(vesselPositions).values({
+        vesselId: existingVessel.id,
+        latitude,
+        longitude,
+        speed,
+        heading,
+        cog,
+        timestamp: now,
+    });
+
+    // 2. Trip Management
+    if (!existingVessel.isInsideHarbour && isInsideHarbour) {
+        // ENTERED HARBOUR
+        console.log(`Vessel ${existingVessel.name} (Class B) entered harbour.`);
+        await handleHarbourEntry(existingVessel.id, now);
+    } else if (existingVessel.isInsideHarbour && !isInsideHarbour) {
+        // LEFT HARBOUR
+        console.log(`Vessel ${existingVessel.name} (Class B) left harbour.`);
+        await handleHarbourExit(existingVessel.id, now);
+    }
+
+    // 3. Berthing Detection
+    if (isInsideHarbour && speed < 0.5) {
+        await handleBerthing(existingVessel.id, now);
+    } else if (isInsideHarbour && speed > 0.5) {
+        await handleDepartureFromBerth(existingVessel.id, now);
+    }
+
+    // 4. Anchorage Detection
+    // Class B doesn't have NavStatus, so we can't rely on "At Anchor" status.
+    // We might infer it from speed < 0.5 and outside harbour, but that's risky (could be drifting).
+    // For now, we'll just close any open anchorage if they enter harbour.
+    if (isInsideHarbour) {
+        await handleAnchorageEnd(existingVessel.id, now);
+    }
+}
+
+async function handleStaticDataReport(message: any) {
+    const report = message.Message.StaticDataReport;
+    const mmsi = report.UserID;
+
+    // Check if Part A or Part B
+    const partNumber = report.PartNumber; // false = Part A, true = Part B (usually, but check docs/types)
+    // Actually in AISStream it might be a boolean or number. 
+    // Based on docs: PartNumber is boolean. false = Part A, true = Part B.
+
+    let name: string | undefined;
+    let callsign: string | undefined;
+    let type: number | undefined;
+    let length: number | undefined;
+    let width: number | undefined;
+
+    if (report.ReportA) {
+        name = report.ReportA.Name?.trim();
+    }
+
+    if (report.ReportB) {
+        callsign = report.ReportB.CallSign;
+        type = report.ReportB.ShipType;
+        if (report.ReportB.Dimension) {
+            length = report.ReportB.Dimension.A + report.ReportB.Dimension.B;
+            width = report.ReportB.Dimension.C + report.ReportB.Dimension.D;
+        }
+    }
+
+    // Upsert Vessel
+    let vessel = await db.query.vessels.findFirst({
+        where: eq(vessels.mmsi, mmsi),
+    });
+
+    if (!vessel && name) {
+        // Try to find by Name (from scraper) only if we have a name
+        vessel = await db.query.vessels.findFirst({
+            where: eq(vessels.name, name),
+        });
+    }
+
+    if (vessel) {
+        // Update existing
+        const updateData: any = {
+            mmsi,
+            lastSeenAt: new Date(),
+        };
+        if (name) updateData.name = name;
+        if (callsign) updateData.callsign = callsign;
+        if (type) updateData.vesselType = type.toString();
+        if (length) updateData.length = length;
+        if (width) updateData.width = width;
+
+        await db.update(vessels).set(updateData).where(eq(vessels.id, vessel.id));
+    } else if (name) {
+        // Create new only if we have a name (Part A)
+        // If we only get Part B first, we might create a vessel without a name? 
+        // Better to wait for Part A or create with MMSI as name placeholder?
+        // Let's create if we have a name.
+        try {
+            await db.insert(vessels).values({
+                name,
+                mmsi,
+                callsign,
+                vesselType: type?.toString(),
+                length,
+                width,
+                lastSeenAt: new Date(),
+            });
+        } catch (e) {
+            console.error('Error inserting Class B vessel:', e);
+        }
     }
 }
