@@ -35,3 +35,9 @@ export async function fetchLiveMap() {
     if (!res.ok) throw new Error('Failed to fetch live map data');
     return res.json();
 }
+
+export async function fetchLiveMapHistory() {
+    const res = await fetch(`${API_URL}/live-map/history`);
+    if (!res.ok) throw new Error('Failed to fetch live map history');
+    return res.json();
+}

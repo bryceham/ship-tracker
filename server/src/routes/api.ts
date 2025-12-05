@@ -171,4 +171,51 @@ api.get('/live-map', async (c) => {
     return c.json(result);
 });
 
+// GET /api/live-map/history
+api.get('/live-map/history', async (c) => {
+    // 1. Get positions for the last 24 hours
+    const positions = await db
+        .select({
+            vesselId: vesselPositions.vesselId,
+            latitude: vesselPositions.latitude,
+            longitude: vesselPositions.longitude,
+            heading: vesselPositions.heading,
+            speed: vesselPositions.speed,
+            timestamp: vesselPositions.timestamp,
+        })
+        .from(vesselPositions)
+        .where(gt(vesselPositions.timestamp, sql`now() - interval '24 hours'`))
+        .orderBy(vesselPositions.timestamp);
+
+    // 2. Get unique vessel IDs
+    const uniqueVesselIds = [...new Set(positions.map(p => p.vesselId).filter(id => id !== null))] as number[];
+
+    if (uniqueVesselIds.length === 0) {
+        return c.json({ positions: [], vessels: {} });
+    }
+
+    // 3. Get vessel details
+    const vesselDetails = await db
+        .select({
+            id: vessels.id,
+            name: vessels.name,
+            vesselType: vessels.vesselType,
+            length: vessels.length,
+            width: vessels.width,
+        })
+        .from(vessels)
+        .where(inArray(vessels.id, uniqueVesselIds));
+
+    // Convert vessel details to a map for easier lookup
+    const vesselsMap = vesselDetails.reduce((acc, v) => {
+        acc[v.id] = v;
+        return acc;
+    }, {} as Record<number, typeof vesselDetails[0]>);
+
+    return c.json({
+        positions,
+        vessels: vesselsMap
+    });
+});
+
 export default api;
