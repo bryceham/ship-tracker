@@ -10,9 +10,9 @@ api.get('/changes', async (c) => {
     const changes = await db.query.vesselMovements.findMany({
         where: and(
             inArray(vesselMovements.changeType, ['NEW', 'UPDATE', 'REMOVED']),
-            gt(vesselMovements.scrapedAt, new Date('2026-02-13T00:00:00')),
+            gt(vesselMovements.scrapedAt, new Date('2026-02-13T07:05:00')),
             ne(vesselMovements.movementType, 'Shift'),
-            lt(vesselMovements.scheduledTime, new Date('2026-02-20T00:00:00'))
+            lt(vesselMovements.scheduledTime, new Date('2026-02-16T00:00:00'))
         ),
         orderBy: [desc(vesselMovements.scrapedAt)],
         limit: 100,
