@@ -43,7 +43,7 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
             orderBy: [desc(vesselMovements.scrapedAt)],
         });
 
-        if (vessel.vesselName === 'African Condor') continue
+        if (vessel.vesselName === 'African Condor' || vessel.vesselName === 'Foxton') continue
 
         if (!latestRecord || latestRecord.changeType === 'REMOVED') {
             // New vessel movement (or reappearing after being removed)
