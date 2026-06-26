@@ -15,9 +15,8 @@ api.get('/changes', async (c) => {
 
     const changes = await db.query.vesselMovements.findMany({
         where: and(
-            inArray(vesselMovements.changeType, ['NEW', 'UPDATE', 'REMOVED']),
+            inArray(vesselMovements.changeType, ['NEW', 'UPDATE', 'REMOVED', 'COMPLETED']),
             gt(vesselMovements.scrapedAt, sevenDaysAgo),
-            ne(vesselMovements.movementType, 'Shift'),
             lt(vesselMovements.scheduledTime, threeDaysHence)
         ),
         orderBy: [desc(vesselMovements.scrapedAt)],
@@ -31,11 +30,10 @@ api.get('/schedule', async (c) => {
     const schedule = await db
         .selectDistinctOn([vesselMovements.vesselName, vesselMovements.movementType])
         .from(vesselMovements)
-        .where(ne(vesselMovements.movementType, 'Shift'))
         .orderBy(vesselMovements.vesselName, vesselMovements.movementType, desc(vesselMovements.scrapedAt));
 
-    // Filter out any records that are marked as REMOVED
-    const activeSchedule = schedule.filter(item => item.changeType !== 'REMOVED');
+    // Filter out any records that are marked as REMOVED or COMPLETED
+    const activeSchedule = schedule.filter(item => item.changeType !== 'REMOVED' && item.changeType !== 'COMPLETED');
 
     return c.json(activeSchedule);
 });
@@ -43,7 +41,7 @@ api.get('/schedule', async (c) => {
 // GET /api/removed
 api.get('/removed', async (c) => {
     const removed = await db.query.vesselMovements.findMany({
-        where: eq(vesselMovements.changeType, 'REMOVED'),
+        where: inArray(vesselMovements.changeType, ['REMOVED', 'COMPLETED']),
         orderBy: [desc(vesselMovements.scrapedAt)],
         limit: 20,
     });
@@ -59,7 +57,7 @@ api.get('/stats/daily-movements', async (c) => {
         })
         .from(vesselMovements)
         .where(and(
-            eq(vesselMovements.changeType, 'REMOVED'),
+            inArray(vesselMovements.changeType, ['REMOVED', 'COMPLETED']),
             gt(vesselMovements.scrapedAt, sql`now() - interval '28 days'`)
         ))
         .groupBy(sql`to_char(${vesselMovements.scrapedAt} AT TIME ZONE 'UTC' AT TIME ZONE 'Australia/Sydney', 'YYYY-MM-DD')`)

@@ -40,7 +40,8 @@ export function LiveSchedule() {
                         {schedule.map((row: any) => {
                             const isArrival = row.movementType === 'Arrival';
                             const isDeparture = row.movementType === 'Departure';
-                            const berth = isArrival ? row.destination : isDeparture ? row.origin : '';
+                            const isShift = row.movementType === 'Shift';
+                            const berth = isArrival ? row.destination : isDeparture ? row.origin : isShift ? row.destination : '';
                             const shipType = berth ? berthTypes[berth as BerthName] : undefined;
 
                             // Determine row background color based on ship type
@@ -54,8 +55,11 @@ export function LiveSchedule() {
                                     <td className="px-4 py-3 font-medium text-white">{row.vesselName}</td>
                                     <td className="px-4 py-3">{shipType}</td>
                                     <td className="px-4 py-3">
-                                        <span className={`px-2 py-1 rounded text-xs font-semibold ${row.movementType === 'Arrival' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-orange-500/20 text-orange-400'
-                                            }`}>
+                                        <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                            row.movementType === 'Arrival' ? 'bg-emerald-500/20 text-emerald-400' :
+                                            row.movementType === 'Departure' ? 'bg-orange-500/20 text-orange-400' :
+                                            'bg-blue-500/20 text-blue-400'
+                                        }`}>
                                             {row.movementType}
                                         </span>
                                     </td>

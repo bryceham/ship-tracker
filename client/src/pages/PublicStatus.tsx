@@ -251,8 +251,17 @@ function SummaryCard({ title, count, icon, color }: any) {
 function VesselCard({ vessel, type }: any) {
     const isArrival = type === 'arrival';
     const isRemoved = type === 'removed';
-    const berth = isArrival ? vessel.destination : vessel.origin;
-    const shipType = berth ? berthTypes[berth as BerthName] : undefined;
+    const isCompleted = vessel.changeType === 'COMPLETED';
+    const isShift = vessel.movementType === 'Shift';
+
+    const berth = isShift
+        ? `${vessel.origin} → ${vessel.destination}`
+        : (isArrival || vessel.movementType === 'Arrival') ? vessel.destination : vessel.origin;
+
+    const shipType = isShift
+        ? berthTypes[vessel.destination as BerthName]
+        : berth ? berthTypes[berth as BerthName] : undefined;
+
     const isCoal = shipType === 'Coal 🔥';
     const scheduledTime = new Date(vessel.scheduledTime);
     const timeUntil = formatDistanceToNow(scheduledTime, { addSuffix: true });
@@ -273,9 +282,11 @@ function VesselCard({ vessel, type }: any) {
                 </div>
                 <div className="text-right">
                     <div className="text-xs text-slate-500 font-medium mt-0.5">
-                        {isArrival ? 'Arriving' : isRemoved ? 'Departed' : 'Departing'}
+                        {isCompleted
+                            ? (vessel.movementType === 'Arrival' ? 'Arrived' : vessel.movementType === 'Departure' ? 'Departed' : 'Shifted')
+                            : isArrival ? 'Arriving' : isRemoved ? 'Cancelled/Departed' : 'Departing'}
                     </div>
-                    <div className={`text-xl font-bold ${isArrival ? 'text-emerald-400' : isRemoved ? 'text-slate-500' : 'text-blue-400'}`}>
+                    <div className={`text-xl font-bold ${isCompleted ? 'text-slate-400' : isArrival ? 'text-emerald-400' : isRemoved ? 'text-slate-500' : 'text-blue-400'}`}>
                         {timeUntil}
                     </div>
                     <div className="text-xs text-slate-500 font-medium mt-0.5">

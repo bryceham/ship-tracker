@@ -43,15 +43,14 @@ export function Feed() {
 function ChangeCard({ change }: { change: any }) {
     const isNew = change.changeType === 'NEW';
     const isRemoved = change.changeType === 'REMOVED';
+    const isCompleted = change.changeType === 'COMPLETED';
     const prev = change.previousValue;
 
     const isArrival = change.movementType === 'Arrival';
     const isDeparture = change.movementType === 'Departure';
-    const berth = isArrival ? change.destination : isDeparture ? change.origin : '';
+    const isShift = change.movementType === 'Shift';
+    const berth = isArrival ? change.destination : isDeparture ? change.origin : isShift ? change.destination : '';
     const shipType = berth ? berthTypes[berth as BerthName] : undefined;
-
-    const scheduledTime = prev?.scheduledTime ? new Date(prev.scheduledTime) : (change.scheduledTime ? new Date(change.scheduledTime) : null);
-    const happenedAsScheduled = isRemoved && scheduledTime && new Date(change.scrapedAt) > scheduledTime;
 
     // Calculate time difference for schedule changes
     const getTimeChangeDescription = () => {
@@ -62,7 +61,7 @@ function ChangeCard({ change }: { change: any }) {
         const diffMs = newTime.getTime() - oldTime.getTime();
         const diffHours = Math.abs(diffMs) / (1000 * 60 * 60);
 
-        const movementType = isArrival ? 'arrival' : isDeparture ? 'departure' : 'movement';
+        const movementType = isArrival ? 'arrival' : isDeparture ? 'departure' : isShift ? 'shift' : 'movement';
         const direction = diffMs > 0 ? 'delayed' : 'brought forward';
 
         let timeDescription = '';
@@ -87,7 +86,7 @@ function ChangeCard({ change }: { change: any }) {
     const cardBgClass = isCoal ? 'bg-orange-500/20' : 'bg-surface';
 
     return (
-        <div className={`${cardBgClass} rounded-lg p-4 shadow-lg border-l-4 ${isRemoved ? (happenedAsScheduled ? 'border-emerald-500' : 'border-red-500') : 'border-accent'}`}>
+        <div className={`${cardBgClass} rounded-lg p-4 shadow-lg border-l-4 ${isCompleted ? 'border-emerald-500' : isRemoved ? 'border-red-500' : 'border-accent'}`}>
             <div className="flex justify-between items-start mb-2">
                 <h3 className="font-bold text-lg text-white flex items-center gap-2">
                     <span className="text-2xl">🚢</span> {change.vesselName}
@@ -100,20 +99,26 @@ function ChangeCard({ change }: { change: any }) {
             <div className="text-slate-300 text-sm space-y-2">
                 {isNew ? (
                     <div className="flex items-center gap-2 text-emerald-400">
-                        <span className="font-semibold">New Schedule Detected</span>
+                        <span className="font-semibold">
+                            {isShift
+                                ? `New Shift Scheduled: ${change.origin} → ${change.destination}`
+                                : `New ${change.movementType} Scheduled`}
+                        </span>
+                    </div>
+                ) : isCompleted ? (
+                    <div className="flex items-center gap-2 text-emerald-400">
+                        <span>
+                            {isShift
+                                ? `Vessel shifted from ${change.origin} to ${change.destination}`
+                                : `Vessel ${change.movementType?.toLowerCase() === 'arrival' ? 'arrived' : 'departed'} as scheduled`}
+                        </span>
                     </div>
                 ) : isRemoved ? (
-                    happenedAsScheduled ? (
-                        <div className="flex items-center gap-2 text-emerald-400">
-                            <span>
-                                Vessel {change.movementType?.toLowerCase() === 'arrival' ? 'arrived' : 'departed'} as scheduled
-                            </span>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-2 text-red-400">
-                            <span className="font-semibold">Vessel Removed from Schedule</span>
-                        </div>
-                    )
+                    <div className="flex items-center gap-2 text-red-400">
+                        <span className="font-semibold">
+                            {isShift ? 'Shift Cancelled' : `Vessel Removed from ${change.movementType}`}
+                        </span>
+                    </div>
                 ) : (
                     <div className="space-y-1">
                         {timeChangeDescription && (
