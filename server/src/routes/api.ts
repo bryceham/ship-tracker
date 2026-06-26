@@ -7,12 +7,18 @@ const api = new Hono();
 
 // GET /api/changes
 api.get('/changes', async (c) => {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const threeDaysHence = new Date();
+    threeDaysHence.setDate(threeDaysHence.getDate() + 3);
+
     const changes = await db.query.vesselMovements.findMany({
         where: and(
             inArray(vesselMovements.changeType, ['NEW', 'UPDATE', 'REMOVED']),
-            gt(vesselMovements.scrapedAt, new Date('2026-02-13T07:05:00')),
+            gt(vesselMovements.scrapedAt, sevenDaysAgo),
             ne(vesselMovements.movementType, 'Shift'),
-            lt(vesselMovements.scheduledTime, new Date('2026-02-16T00:00:00'))
+            lt(vesselMovements.scheduledTime, threeDaysHence)
         ),
         orderBy: [desc(vesselMovements.scrapedAt)],
         limit: 100,
