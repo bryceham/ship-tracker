@@ -1,9 +1,9 @@
-
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Route, Switch, Link } from 'wouter';
 import { Feed } from './components/Feed';
 import { LiveSchedule } from './components/LiveSchedule';
 import { PublicStatus } from './pages/PublicStatus';
+import { NewDashboard } from './pages/NewDashboard';
 
 const queryClient = new QueryClient();
 
@@ -40,6 +40,7 @@ function App() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/status" component={PublicStatus} />
+        <Route path="/new" component={NewDashboard} />
       </Switch>
     </QueryClientProvider>
   );
