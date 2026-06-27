@@ -6,6 +6,8 @@ import api from './routes/api';
 import { scrapeVessels } from './services/scraper';
 import dotenv from 'dotenv';
 import { readFile } from 'fs/promises';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { db } from './db';
 
 dotenv.config();
 
@@ -29,6 +31,18 @@ app.get('*', async (c) => {
 });
 
 const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+
+// Run database migrations on startup
+(async () => {
+    try {
+        console.log('Running database migrations...');
+        await migrate(db, { migrationsFolder: './drizzle' });
+        console.log('Migrations applied successfully.');
+    } catch (error) {
+        console.error('Failed to run database migrations:', error);
+    }
+})();
+
 console.log(`Server is running on port ${port}`);
 
 serve({
