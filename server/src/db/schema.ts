@@ -7,6 +7,9 @@ export const vesselMovements = pgTable('vessel_movements', {
   scheduledTime: timestamp('scheduled_time').notNull(),
   origin: varchar('origin', { length: 255 }),
   destination: varchar('destination', { length: 255 }),
+  expectedTime: timestamp('expected_time'),
+  vesselType: varchar('vessel_type', { length: 100 }),
+  agent: varchar('agent', { length: 100 }),
 
   status: varchar('status', { length: 100 }),
   changeType: varchar('change_type', { length: 20 }).notNull(), // 'NEW', 'UPDATE', 'UNCHANGED'

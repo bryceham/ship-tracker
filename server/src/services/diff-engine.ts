@@ -9,12 +9,15 @@ export interface ScrapedVessel {
     scheduledTime: Date;
     origin: string;
     destination: string;
-
     status: string;
+    expectedTime?: Date | null;
+    vesselType?: string | null;
+    agent?: string | null;
 }
 
 function generateHash(vessel: ScrapedVessel): string {
-    const data = `${vessel.vesselName}|${vessel.movementType}|${vessel.scheduledTime.toISOString()}|${vessel.origin}|${vessel.destination}|${vessel.status}`;
+    const expectedTimeStr = vessel.expectedTime ? vessel.expectedTime.toISOString() : 'N/A';
+    const data = `${vessel.vesselName}|${vessel.movementType}|${vessel.scheduledTime.toISOString()}|${vessel.origin}|${vessel.destination}|${vessel.status}|${expectedTimeStr}|${vessel.vesselType || ''}|${vessel.agent || ''}`;
     return crypto.createHash('sha256').update(data).digest('hex');
 }
 
@@ -44,6 +47,9 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
         origin: string | null;
         destination: string | null;
         status: string | null;
+        expectedTime: Date | null;
+        vesselType: string | null;
+        agent: string | null;
         hash: string;
         matched: boolean;
     }
@@ -77,6 +83,9 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                     origin: record.origin,
                     destination: record.destination,
                     status: record.status,
+                    expectedTime: record.expectedTime,
+                    vesselType: record.vesselType,
+                    agent: record.agent,
                     hash: record.hash,
                     matched: false
                 });
@@ -105,6 +114,9 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                 origin: vessel.origin,
                 destination: vessel.destination,
                 status: vessel.status,
+                expectedTime: vessel.expectedTime,
+                vesselType: vessel.vesselType,
+                agent: vessel.agent,
                 changeType: 'NEW',
                 hash: currentHash,
             });
@@ -129,6 +141,15 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                 if (matchedActive.status !== vessel.status) {
                     previousValue.status = matchedActive.status;
                 }
+                if (matchedActive.expectedTime?.getTime() !== vessel.expectedTime?.getTime()) {
+                    previousValue.expectedTime = matchedActive.expectedTime;
+                }
+                if (matchedActive.vesselType !== vessel.vesselType) {
+                    previousValue.vesselType = matchedActive.vesselType;
+                }
+                if (matchedActive.agent !== vessel.agent) {
+                    previousValue.agent = matchedActive.agent;
+                }
 
                 await db.insert(vesselMovements).values({
                     vesselName: vessel.vesselName,
@@ -137,6 +158,9 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                     origin: vessel.origin,
                     destination: vessel.destination,
                     status: vessel.status,
+                    expectedTime: vessel.expectedTime,
+                    vesselType: vessel.vesselType,
+                    agent: vessel.agent,
                     changeType: 'UPDATE',
                     previousValue: previousValue,
                     hash: currentHash,
@@ -147,6 +171,9 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                 matchedActive.origin = vessel.origin;
                 matchedActive.destination = vessel.destination;
                 matchedActive.status = vessel.status;
+                matchedActive.expectedTime = vessel.expectedTime ?? null;
+                matchedActive.vesselType = vessel.vesselType ?? null;
+                matchedActive.agent = vessel.agent ?? null;
                 matchedActive.hash = currentHash;
             }
         }
@@ -171,6 +198,9 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                 origin: record.origin,
                 destination: record.destination,
                 status: record.status,
+                expectedTime: record.expectedTime,
+                vesselType: record.vesselType,
+                agent: record.agent,
                 changeType: finalChangeType,
                 hash: newHash,
             });

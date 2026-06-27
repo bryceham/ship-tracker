@@ -8,6 +8,13 @@
       "when": 1764117570310,
       "tag": "0000_sparkling_captain_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782533008467,
+      "tag": "0001_add_columns",
+      "breakpoints": true
     }
   ]
 }

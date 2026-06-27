@@ -28,8 +28,11 @@ export async function fetchAndParseVessels(): Promise<ScrapedVessel[]> {
         };
 
         const timeStr = getText('.views-field-time');
+        const expectedTimeStr = getText('.views-field-eta-bradleys');
         const movementTypeStr = getText('.views-field-movement-type');
         const vesselName = getText('.views-field-vessel-name');
+        const vesselType = getText('.views-field-vessel-type');
+        const agent = getText('.views-field-vessel-agent');
         const origin = getText('.views-field-origin');
         const destination = getText('.views-field-destination');
         const inPort = getText('.views-field-in-port');
@@ -45,39 +48,22 @@ export async function fetchAndParseVessels(): Promise<ScrapedVessel[]> {
         } else if (lowerType.includes('shift')) {
             movementType = 'Shift';
         } else {
-            // Default or skip? If we don't know what it is, maybe skip?
-            // But previously it defaulted to Departure. Let's log a warning and skip to be safe, 
-            // or default to Departure if we want to be aggressive.
-            // Given the user's issue, let's skip unknown types to avoid bad data.
             console.warn(`Unknown movement type: ${movementTypeStr} for ${vesselName}`);
             return;
         }
-
-
 
         // Status - map 'In port' to something meaningful or just use it
         const status = `In Port: ${inPort}`;
 
         // Date Parsing: "Wed 26 Nov 13:00" -> Date object
-        // We need to add the year.
         let scheduledTime: Date;
         try {
             const currentYear = new Date().getFullYear();
-            // Append year to the string for parsing
             const dateStrWithYear = `${timeStr} ${currentYear}`;
-
-            // Format seems to be "EEE d MMM HH:mm yyyy"
-            // Parse the string into a Date object (which will be in local system time, likely UTC or whatever the server is set to)
-            // But we know this time is actually Sydney time.
             const parsedLocal = parse(dateStrWithYear, 'EEE d MMM HH:mm yyyy', new Date());
-
-            // Convert the "local" time (which is actually Sydney time) to a true Date object (UTC)
-            // We tell fromZonedTime that 'parsedLocal' represents a time in 'Australia/Sydney'
             scheduledTime = fromZonedTime(parsedLocal, 'Australia/Sydney');
 
-            // Handle year boundary (e.g. scraping in Dec for Jan dates)
-            // If the parsed date is more than 6 months in the past, assume it's next year.
-            // If it's more than 6 months in the future, assume it's last year (unlikely for schedule).
+            // Handle year boundary
             const now = new Date();
             if (scheduledTime.getTime() < now.getTime() - 180 * 24 * 60 * 60 * 1000) {
                 scheduledTime.setFullYear(currentYear + 1);
@@ -94,14 +80,36 @@ export async function fetchAndParseVessels(): Promise<ScrapedVessel[]> {
             return;
         }
 
+        // Parse expectedTime if not 'N/A'
+        let expectedTime: Date | null = null;
+        if (expectedTimeStr && expectedTimeStr.toLowerCase() !== 'n/a') {
+            try {
+                const currentYear = new Date().getFullYear();
+                const dateStrWithYear = `${expectedTimeStr} ${currentYear}`;
+                const parsedLocal = parse(dateStrWithYear, 'EEE d MMM HH:mm yyyy', new Date());
+                expectedTime = fromZonedTime(parsedLocal, 'Australia/Sydney');
+
+                const now = new Date();
+                if (expectedTime.getTime() < now.getTime() - 180 * 24 * 60 * 60 * 1000) {
+                    expectedTime.setFullYear(currentYear + 1);
+                } else if (expectedTime.getTime() > now.getTime() + 180 * 24 * 60 * 60 * 1000) {
+                    expectedTime.setFullYear(currentYear - 1);
+                }
+            } catch (e) {
+                console.warn(`Failed to parse expected time: ${expectedTimeStr}`);
+            }
+        }
+
         vessels.push({
             vesselName,
             movementType,
             scheduledTime,
             origin,
             destination,
-
             status,
+            expectedTime,
+            vesselType,
+            agent,
         });
     });
 
