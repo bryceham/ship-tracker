@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchSchedule, fetchChanges, fetchRemoved } from '../lib/api';
-import { Anchor, Clock, Compass, Activity, BarChart2, AlertTriangle, Wind } from 'lucide-react';
+import { Anchor, Clock, Compass, Activity, BarChart2, AlertTriangle, Wind, History } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'wouter';
 import { berthTypes, type BerthName } from '../components/berths';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Feed } from '../components/Feed';
 
 // Coordinates of berths on our SVG map layout
 const berthCoordinates: Record<string, { x: number; y: number }> = {
@@ -36,7 +37,7 @@ export function NewDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [tideHeight, setTideHeight] = useState(0.8);
   const [tideState, setTideState] = useState<'Rising' | 'Falling'>('Rising');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'radar' | 'timeline' | 'analytics'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'radar' | 'timeline' | 'analytics' | 'feed'>('dashboard');
   const [selectedVessel, setSelectedVessel] = useState<any | null>(null);
 
   // TanStack Query calls for real schedule and changes
@@ -183,6 +184,18 @@ export function NewDashboard() {
           >
             <Compass className="w-4 h-4" />
             Control Center
+          </button>
+
+          <button 
+            onClick={() => setActiveTab('feed')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-sm font-semibold transition-all ${
+              activeTab === 'feed' 
+                ? 'bg-gradient-to-r from-cyan-500/10 to-blue-500/5 border border-cyan-500/20 text-cyan-400' 
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30 border border-transparent'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            Schedule Feed
           </button>
           
           <button 
@@ -751,6 +764,12 @@ export function NewDashboard() {
                 </div>
               </div>
 
+            </div>
+          )}
+
+          {activeTab === 'feed' && (
+            <div className="bg-[#0f172a]/20 border border-slate-800/80 rounded-2xl p-6 max-w-4xl mx-auto">
+              <Feed />
             </div>
           )}
 
