@@ -175,4 +175,14 @@ api.get('/stats/berths', async (c) => {
     return c.json(result);
 });
 
+// GET /api/vessel/:vesselName/history
+api.get('/vessel/:vesselName/history', async (c) => {
+    const vesselName = c.req.param('vesselName');
+    const history = await db.query.vesselMovements.findMany({
+        where: eq(vesselMovements.vesselName, vesselName),
+        orderBy: [desc(vesselMovements.scrapedAt)],
+    });
+    return c.json(history);
+});
+
 export default api;

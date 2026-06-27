@@ -17,3 +17,9 @@ export async function fetchRemoved() {
     if (!res.ok) throw new Error('Failed to fetch removed vessels');
     return res.json();
 }
+
+export async function fetchVesselHistory(vesselName: string) {
+    const res = await fetch(`${API_URL}/vessel/${encodeURIComponent(vesselName)}/history`);
+    if (!res.ok) throw new Error('Failed to fetch vessel history');
+    return res.json();
+}

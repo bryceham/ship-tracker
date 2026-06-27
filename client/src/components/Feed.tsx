@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchChanges } from '../lib/api';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ArrowRight, Clock, MapPin } from 'lucide-react';
+import { Link } from 'wouter';
 import { berthTypes, type BerthName } from './berths';
 
 export function Feed() {
@@ -89,7 +90,10 @@ function ChangeCard({ change }: { change: any }) {
         <div className={`${cardBgClass} rounded-lg p-4 shadow-lg border-l-4 ${isCompleted ? 'border-emerald-500' : isRemoved ? 'border-red-500' : 'border-accent'}`}>
             <div className="flex justify-between items-start mb-2">
                 <h3 className="font-bold text-lg text-white flex items-center gap-2">
-                    <span className="text-2xl">🚢</span> {change.vesselName}
+                    <span className="text-2xl">🚢</span>
+                    <Link href={`/vessel/${encodeURIComponent(change.vesselName)}`} className="hover:underline hover:text-cyan-400 cursor-pointer">
+                        {change.vesselName}
+                    </Link>
                 </h3>
                 <span className="text-xs text-slate-400">
                     {formatDistanceToNow(new Date(change.scrapedAt), { addSuffix: true })}

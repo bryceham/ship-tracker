@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchSchedule, fetchChanges, fetchRemoved } from '../lib/api';
 import { Anchor, Clock, Compass, Activity, BarChart2, AlertTriangle, Wind } from 'lucide-react';
 import { format } from 'date-fns';
+import { Link } from 'wouter';
 import { berthTypes, type BerthName } from '../components/berths';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
@@ -366,7 +367,9 @@ export function NewDashboard() {
                                   : 'bg-cyan-500/15 border-cyan-500/30 text-cyan-200'
                               }`}
                             >
-                              <span className="truncate">{vessel.vesselName} ({vessel.movementType})</span>
+                              <Link href={`/vessel/${encodeURIComponent(vessel.vesselName)}`} className="hover:underline hover:text-cyan-300 truncate z-10 cursor-pointer">
+                                {vessel.vesselName} ({vessel.movementType})
+                              </Link>
                               {hasConflict && (
                                 <span className="text-rose-400 animate-pulse">⚠️ Conflict Warning</span>
                               )}
@@ -434,7 +437,9 @@ export function NewDashboard() {
                           'bg-slate-900/60 border-slate-800 text-slate-300'
                         }`}>
                           <div className="font-bold flex justify-between">
-                            <span>{change.vesselName}</span>
+                            <Link href={`/vessel/${encodeURIComponent(change.vesselName)}`} className="hover:underline hover:text-cyan-400 cursor-pointer">
+                              {change.vesselName}
+                            </Link>
                             <span className="opacity-60">{format(new Date(change.scrapedAt), 'HH:mm')}</span>
                           </div>
                           <div className="mt-1 font-mono">
@@ -506,7 +511,11 @@ export function NewDashboard() {
                   <div className="space-y-4">
                     <div>
                       <span className="text-xs text-slate-500 uppercase tracking-widest block">Vessel Name</span>
-                      <h4 className="text-xl font-bold text-white">{selectedVessel.vesselName}</h4>
+                      <h4>
+                        <Link href={`/vessel/${encodeURIComponent(selectedVessel.vesselName)}`} className="text-xl font-bold text-white hover:underline hover:text-cyan-400 cursor-pointer">
+                          {selectedVessel.vesselName}
+                        </Link>
+                      </h4>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -582,7 +591,9 @@ export function NewDashboard() {
                                 delay ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-slate-800/30 border-slate-800 text-slate-300'
                               }`}>
                                 <div>
-                                  <span className="font-bold text-white block">{m.vesselName} ({m.movementType})</span>
+                                  <Link href={`/vessel/${encodeURIComponent(m.vesselName)}`} className="font-bold text-white block hover:underline hover:text-cyan-400 cursor-pointer">
+                                    {m.vesselName} ({m.movementType})
+                                  </Link>
                                   <span className="text-[10px] opacity-60">Scheduled: {format(new Date(m.scheduledTime), 'MMM d, HH:mm')}</span>
                                 </div>
                                 {delay && (

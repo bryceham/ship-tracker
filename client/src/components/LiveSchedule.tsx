@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchSchedule } from '../lib/api';
 import { format } from 'date-fns';
+import { Link } from 'wouter';
 import { berthTypes } from './berths';
 import type { BerthName } from './berths';
 
@@ -52,7 +53,11 @@ export function LiveSchedule() {
 
                             return (
                                 <tr key={row.id} className={rowBgClass}>
-                                    <td className="px-4 py-3 font-medium text-white">{row.vesselName}</td>
+                                    <td className="px-4 py-3 font-medium text-white">
+                                        <Link href={`/vessel/${encodeURIComponent(row.vesselName)}`} className="hover:underline hover:text-cyan-400 cursor-pointer">
+                                            {row.vesselName}
+                                        </Link>
+                                    </td>
                                     <td className="px-4 py-3">{shipType}</td>
                                     <td className="px-4 py-3">
                                         <span className={`px-2 py-1 rounded text-xs font-semibold ${
