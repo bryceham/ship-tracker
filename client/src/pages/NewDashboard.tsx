@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchSchedule, fetchChanges, fetchRemoved } from '../lib/api';
-import { Anchor, Clock, Compass, Activity, BarChart2, AlertTriangle, Wind, History } from 'lucide-react';
+import { Anchor, Clock, Compass, Activity, BarChart2, AlertTriangle, History, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'wouter';
 import { berthTypes, type BerthName } from '../components/berths';
@@ -322,6 +322,27 @@ export function NewDashboard() {
     return ticks;
   };
 
+  // Calculations for KPI summary cards
+  const next24h = new Date(currentTime.getTime() + 24 * 60 * 60 * 1000);
+
+  const vesselsInPortCount = schedule.filter((s: any) =>
+    s.movementType === 'Departure' &&
+    new Date(s.scheduledTime) > currentTime &&
+    s.status === 'In Port: Yes'
+  ).length;
+
+  const arrivals24hCount = schedule.filter((s: any) =>
+    s.movementType === 'Arrival' &&
+    new Date(s.scheduledTime) > currentTime &&
+    new Date(s.scheduledTime) < next24h
+  ).length;
+
+  const departures24hCount = schedule.filter((s: any) =>
+    s.movementType === 'Departure' &&
+    new Date(s.scheduledTime) > currentTime &&
+    new Date(s.scheduledTime) < next24h
+  ).length;
+
   return (
     <div className="min-h-screen bg-[#030712] text-slate-100 flex font-sans">
       
@@ -431,10 +452,10 @@ export function NewDashboard() {
           
           {/* KPI Analytics Strip */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard title="Active Vessels" count={schedule.length.toString()} subtitle="Currently in schedule" icon={<Anchor className="text-blue-400" />} />
-            <KpiCard title="Active Shifts" count={schedule.filter((s: any) => s.movementType === 'Shift').length.toString()} subtitle="Berth transits" icon={<Activity className="text-emerald-400" />} />
-            <KpiCard title="Berth Conflicts" count={conflictBerths.size.toString()} subtitle="Delays projected" icon={<AlertTriangle className="text-amber-400" />} />
-            <KpiCard title="Wind Speed" count="12 kt" subtitle="Winds: Light SE" icon={<Wind className="text-cyan-400" />} />
+            <KpiCard title="Vessels in Port" count={vesselsInPortCount.toString()} subtitle="Active vessels at berth" icon={<Anchor className="text-blue-400" />} />
+            <KpiCard title="Arrivals (24h)" count={arrivals24hCount.toString()} subtitle="Incoming voyages" icon={<ArrowRight className="text-emerald-400" />} />
+            <KpiCard title="Departures (24h)" count={departures24hCount.toString()} subtitle="Outgoing voyages" icon={<ArrowRight className="text-orange-400" />} />
+            <KpiCard title="Berth Conflicts" count={conflictBerths.size.toString()} subtitle="Delays/turnarounds projected" icon={<AlertTriangle className="text-amber-400" />} />
           </div>
 
           {/* TAB 1: CONTROL CENTER */}
@@ -551,7 +572,7 @@ export function NewDashboard() {
                             <div className="text-[10px] font-bold text-slate-400 truncate" title={berth}>
                               {berth.replace('Kooragang', 'K').replace('East Basin', 'EB').replace('West Basin', 'WB').replace('Mayfield', 'M')}
                             </div>
-                            <div className="col-span-3 h-8 bg-slate-950/40 rounded-lg relative border border-slate-850/60 overflow-hidden">
+                            <div className="col-span-3 h-8 bg-slate-950/40 rounded-lg relative border border-slate-850/60">
                               
                               {/* Background hour grid lines */}
                               {getTimelineRulerTicks().map((tick, idx) => (
@@ -569,22 +590,41 @@ export function NewDashboard() {
                                 const hasConflict = (visit.arrivalRecord && projectedDelays[visit.arrivalRecord.id]) ||
                                                     (visit.departureRecord && projectedDelays[visit.departureRecord.id]);
 
+                                const delayText = (visit.arrivalRecord && projectedDelays[visit.arrivalRecord.id]) ||
+                                                  (visit.departureRecord && projectedDelays[visit.departureRecord.id]);
+
                                 return (
                                   <div
                                     key={visit.id}
                                     style={{ left: coords.left, width: coords.width }}
-                                    className={`absolute top-1 bottom-1 rounded px-2 flex items-center text-[9px] font-bold text-white overflow-hidden justify-between border ${
+                                    className={`absolute top-1 bottom-1 rounded px-2 flex items-center text-[9px] font-bold text-white justify-between border group/bar cursor-pointer ${
                                       hasConflict
                                         ? 'bg-rose-500/20 border-rose-500 text-rose-300'
                                         : visit.isEstimated
                                           ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300'
                                           : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
                                     }`}
-                                    title={`${visit.vesselName} stay: ${format(visit.arrivalTime, 'MMM d, HH:mm')} - ${format(visit.departureTime, 'MMM d, HH:mm')}`}
                                   >
                                     <Link href={`/vessel/${encodeURIComponent(visit.vesselName)}`} className="hover:underline hover:text-cyan-300 truncate z-10 cursor-pointer">
                                       {visit.vesselName}
                                     </Link>
+
+                                    {/* Tooltip on Hover */}
+                                    <div className="hidden group-hover/bar:block absolute left-1/2 bottom-full mb-2 transform -translate-x-1/2 bg-slate-950 border border-slate-800 text-slate-200 text-[9px] p-2.5 rounded-lg shadow-xl w-52 z-30 pointer-events-none leading-normal font-sans font-medium">
+                                      <div className="font-bold border-b border-slate-800 pb-1 mb-1 text-white flex justify-between">
+                                        <span>{visit.vesselName}</span>
+                                        {visit.isEstimated && <span className="text-cyan-400 text-[8px] font-normal uppercase">Estimated</span>}
+                                      </div>
+                                      <div className="space-y-0.5">
+                                        <div>Arr: <span className="text-slate-400">{format(visit.arrivalTime, 'MMM d, HH:mm')}</span></div>
+                                        <div>Dep: <span className="text-slate-400">{format(visit.departureTime, 'MMM d, HH:mm')}</span></div>
+                                        {hasConflict && (
+                                          <div className="text-rose-400 font-bold border-t border-rose-950/50 pt-1 mt-1">
+                                            ⚠️ {delayText}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -833,7 +873,7 @@ export function NewDashboard() {
                           </div>
 
                           {/* Timeline Track */}
-                          <div className="flex-1 relative bg-slate-950/10 overflow-hidden">
+                          <div className="flex-1 relative bg-slate-950/10">
                             {/* Vertical hour grid lines */}
                             {getTimelineRulerTicks().map((tick, idx) => (
                               <div
