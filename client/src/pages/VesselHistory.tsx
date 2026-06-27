@@ -6,6 +6,28 @@ import { Anchor, Clock, Compass, Activity, BarChart2, AlertTriangle, ArrowLeft, 
 import { format, formatDistanceToNow } from 'date-fns';
 import { berthTypes, type BerthName } from '../components/berths';
 
+function safeFormat(dateVal: any, formatStr: string, fallback = 'N/A') {
+  if (!dateVal) return fallback;
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return fallback;
+  try {
+    return format(d, formatStr);
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function safeFormatDistance(dateVal: any, fallback = '') {
+  if (!dateVal) return fallback;
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return fallback;
+  try {
+    return formatDistanceToNow(d, { addSuffix: true });
+  } catch (e) {
+    return fallback;
+  }
+}
+
 export function VesselHistory({ params }: { params: { name: string } }) {
   const vesselName = params?.name ? decodeURIComponent(params.name) : '';
   const [currentTime] = useState(new Date());
@@ -154,7 +176,7 @@ export function VesselHistory({ params }: { params: { name: string } }) {
                 }`}>
                   {latestRecord?.changeType}
                 </span>
-                <span className="text-[10px] text-slate-400">{latestRecord ? formatDistanceToNow(new Date(latestRecord.scrapedAt), { addSuffix: true }) : ''}</span>
+                <span className="text-[10px] text-slate-400">{safeFormatDistance(latestRecord?.scrapedAt)}</span>
               </div>
               <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl min-w-[120px]">
                 <span className="text-[10px] text-slate-500 block uppercase font-medium">Total Movements</span>
@@ -225,7 +247,7 @@ export function VesselHistory({ params }: { params: { name: string } }) {
                             </span>
                           </div>
                           <span className="text-xs text-slate-500 font-mono">
-                            Scraped: {format(new Date(record.scrapedAt), 'dd MMM yyyy, HH:mm:ss')} ({formatDistanceToNow(new Date(record.scrapedAt), { addSuffix: true })})
+                            Scraped: {safeFormat(record.scrapedAt, 'dd MMM yyyy, HH:mm:ss')} ({safeFormatDistance(record.scrapedAt)})
                           </span>
                         </div>
 
@@ -238,16 +260,16 @@ export function VesselHistory({ params }: { params: { name: string } }) {
                               {isUpdate && prev?.scheduledTime ? (
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="line-through text-slate-500">
-                                    {format(new Date(prev.scheduledTime), 'MMM d, HH:mm')}
+                                    {safeFormat(prev.scheduledTime, 'MMM d, HH:mm')}
                                   </span>
                                   <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
                                   <span className="text-amber-400 font-bold">
-                                    {format(new Date(record.scheduledTime), 'MMM d, HH:mm')}
+                                    {safeFormat(record.scheduledTime, 'MMM d, HH:mm')}
                                   </span>
                                 </div>
                               ) : (
                                 <span className="text-slate-200 font-bold">
-                                  {format(new Date(record.scheduledTime), 'EEEE, MMM d, HH:mm')}
+                                  {safeFormat(record.scheduledTime, 'EEEE, MMM d, HH:mm')}
                                 </span>
                               )}
                             </div>
@@ -298,7 +320,7 @@ export function VesselHistory({ params }: { params: { name: string } }) {
                               <span>Status: <strong className="text-slate-300">{record.status}</strong></span>
                             )}
                             {record.expectedTime && (
-                              <span>Expected: <strong className="text-slate-300">{format(new Date(record.expectedTime), 'MMM d, HH:mm')}</strong></span>
+                              <span>Expected: <strong className="text-slate-300">{safeFormat(record.expectedTime, 'MMM d, HH:mm')}</strong></span>
                             )}
                           </div>
                         )}
