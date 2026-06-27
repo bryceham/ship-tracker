@@ -66,6 +66,24 @@ export function NewDashboard() {
     },
   });
 
+  const { data: agentStats = [] } = useQuery({
+    queryKey: ['agent-stats'],
+    queryFn: async () => {
+      const res = await fetch('/api/stats/agents');
+      if (!res.ok) throw new Error('Failed to fetch agent stats');
+      return res.json();
+    },
+  });
+
+  const { data: berthStats = [] } = useQuery({
+    queryKey: ['berth-stats'],
+    queryFn: async () => {
+      const res = await fetch('/api/stats/berths');
+      if (!res.ok) throw new Error('Failed to fetch berth stats');
+      return res.json();
+    },
+  });
+
   // Clock & simulated tide updates
   useEffect(() => {
     const timer = setInterval(() => {
@@ -591,25 +609,104 @@ export function NewDashboard() {
               {/* Stat Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="p-6 bg-slate-900/40 border border-slate-800 rounded-2xl">
-                  <span className="text-xs text-slate-400 block font-medium">Average Arrival Deviation</span>
-                  <h4 className="text-3xl font-black text-white mt-1 font-mono">+2.4 hours</h4>
-                  <span className="text-[10px] text-amber-400 mt-1 block">⚠️ 15% increase compared to last month</span>
+                  <span className="text-xs text-slate-400 block font-medium">Average Agent On-Time Rate</span>
+                  <h4 className="text-3xl font-black text-white mt-1 font-mono text-cyan-400">
+                    {agentStats.length > 0
+                      ? `${(agentStats.reduce((acc: number, cur: any) => acc + cur.onTimePercentage, 0) / agentStats.length).toFixed(1)}%`
+                      : '100%'}
+                  </h4>
+                  <span className="text-[10px] text-emerald-400 mt-1 block">✓ High overall agent reliability index</span>
                 </div>
                 <div className="p-6 bg-slate-900/40 border border-slate-800 rounded-2xl">
                   <span className="text-xs text-slate-400 block font-medium">Completed Movements (28 Days)</span>
-                  <h4 className="text-3xl font-black text-white mt-1 font-mono">
+                  <h4 className="text-3xl font-black text-white mt-1 font-mono text-emerald-400">
                     {removed.filter((r: any) => r.changeType === 'COMPLETED').length.toString()}
                   </h4>
                   <span className="text-[10px] text-emerald-400 mt-1 block">✓ All completed safely</span>
                 </div>
                 <div className="p-6 bg-[#0f172a]/20 border border-slate-800 rounded-2xl">
-                  <span className="text-xs text-slate-400 block font-medium">Most Congested Terminal</span>
-                  <h4 className="text-3xl font-black text-white mt-1 font-mono">Kooragang Coal</h4>
-                  <span className="text-[10px] text-slate-500 mt-1 block">Highest utilization rate in NSW</span>
+                  <span className="text-xs text-slate-400 block font-medium">Most Visited Berth</span>
+                  <h4 className="text-3xl font-black text-white mt-1 font-mono text-blue-400">
+                    {berthStats.length > 0 ? berthStats[0].berth.split(' (')[0] : 'Kooragang 4'}
+                  </h4>
+                  <span className="text-[10px] text-slate-500 mt-1 block">Highest utilization rate in Newcastle</span>
                 </div>
               </div>
 
-              {/* Bar Chart */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* Agent Performance Leaderboard */}
+                <div className="p-6 bg-[#0f172a]/20 border border-slate-800 rounded-2xl flex flex-col overflow-hidden">
+                  <h3 className="font-bold text-white flex items-center gap-2 mb-4">
+                    <BarChart2 className="w-5 h-5 text-cyan-400" />
+                    Agent Reliability Index
+                  </h3>
+                  
+                  <div className="overflow-y-auto max-h-[300px] pr-1">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-[10px] uppercase text-slate-500 tracking-wider">
+                          <th className="pb-3 font-semibold">Agent</th>
+                          <th className="pb-3 font-semibold text-right">Voyages</th>
+                          <th className="pb-3 font-semibold text-right">On-Time</th>
+                          <th className="pb-3 font-semibold text-right">Avg Delay</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-xs divide-y divide-slate-800/40">
+                        {agentStats.map((item: any) => (
+                          <tr key={item.agent} className="hover:bg-slate-800/10">
+                            <td className="py-3 font-bold text-slate-200">{item.agent}</td>
+                            <td className="py-3 text-right text-slate-300">{item.totalVoyages}</td>
+                            <td className="py-3 text-right text-emerald-400 font-mono font-bold">{item.onTimePercentage}%</td>
+                            <td className="py-3 text-right text-slate-400">{item.avgDelayMinutes > 0 ? `${item.avgDelayMinutes}m` : '-'}</td>
+                          </tr>
+                        ))}
+                        {agentStats.length === 0 && (
+                          <tr>
+                            <td colSpan={4} className="py-4 text-center text-slate-500">No agent data yet</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Berth Dwell & Delay Chart */}
+                <div className="lg:col-span-2 p-6 bg-[#0f172a]/20 border border-slate-800 rounded-2xl">
+                  <h3 className="font-bold text-white flex items-center gap-2 mb-6">
+                    <Clock className="w-5 h-5 text-cyan-400" />
+                    Average Vessel Dwell Time by Berth (Hours)
+                  </h3>
+
+                  <div className="w-full h-80">
+                    {berthStats.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={berthStats.slice(0, 10)}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" vertical={false} />
+                          <XAxis
+                            dataKey="berth"
+                            stroke="#9ca3af"
+                            fontSize={10}
+                            tickFormatter={(value: string) => value.split(' (')[0].replace('Kooragang', 'K')}
+                          />
+                          <YAxis stroke="#9ca3af" fontSize={11} unit="h" />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
+                            itemStyle={{ color: '#e5e7eb' }}
+                            labelStyle={{ color: '#9ca3af' }}
+                          />
+                          <Bar dataKey="avgDwellHours" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Avg Dwell Duration" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-slate-500 text-xs">No berth dwell data available</div>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Daily Throughput Chart */}
               <div className="p-6 bg-[#0f172a]/20 border border-slate-800 rounded-2xl">
                 <h3 className="font-bold text-white flex items-center gap-2 mb-6">
                   <BarChart2 className="w-5 h-5 text-cyan-400" />

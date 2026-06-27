@@ -32,8 +32,8 @@ app.get('*', async (c) => {
 
 const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
-// Run database migrations on startup
-(async () => {
+// Startup routine wrapping migrations, server, and cron synchronously
+const startServer = async () => {
     try {
         console.log('Running database migrations...');
         await migrate(db, { migrationsFolder: './drizzle' });
@@ -41,19 +41,23 @@ const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
     } catch (error) {
         console.error('Failed to run database migrations:', error);
     }
-})();
 
-console.log(`Server is running on port ${port}`);
+    console.log(`Server is running on port ${port}`);
 
-serve({
-    fetch: app.fetch,
-    port
+    serve({
+        fetch: app.fetch,
+        port
+    });
+
+    // Scraper Cron (every 10 minutes)
+    const INTERVAL = 60 * 1000 * 10;
+    console.log('Starting scraper service...');
+    await scrapeVessels(); // Run immediately on start
+    setInterval(() => {
+        scrapeVessels();
+    }, INTERVAL);
+};
+
+startServer().catch((err) => {
+    console.error('Fatal server startup error:', err);
 });
-
-// Scraper Cron (every 10 minutes)
-const INTERVAL = 60 * 1000 * 10;
-console.log('Starting scraper service...');
-scrapeVessels(); // Run immediately on start
-setInterval(() => {
-    scrapeVessels();
-}, INTERVAL);
