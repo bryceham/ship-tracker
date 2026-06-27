@@ -160,6 +160,168 @@ export function NewDashboard() {
     });
   });
 
+  // Group movements into stays/visits
+  interface VesselVisit {
+    id: string | number;
+    vesselName: string;
+    berth: string;
+    arrivalTime: Date;
+    departureTime: Date;
+    arrivalRecord: any;
+    departureRecord: any;
+    isEstimated: boolean;
+    isShift: boolean;
+  }
+
+  const berthVisits: Record<string, VesselVisit[]> = {};
+  
+  // Initialize for all known berths
+  Object.keys(berthCoordinates).forEach(berth => {
+    berthVisits[berth] = [];
+  });
+
+  // Group by berth
+  const movementsByBerth: Record<string, any[]> = {};
+  schedule.forEach((item: any) => {
+    const isArrival = item.movementType === 'Arrival';
+    const berth = isArrival ? item.destination : item.origin;
+    if (berth && berthVisits[berth]) {
+      if (!movementsByBerth[berth]) movementsByBerth[berth] = [];
+      movementsByBerth[berth].push(item);
+    }
+  });
+
+  Object.entries(movementsByBerth).forEach(([berth, items]) => {
+    items.sort((a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime());
+    
+    const processedIds = new Set<number>();
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (processedIds.has(item.id)) continue;
+
+      if (item.movementType === 'Arrival') {
+        // Find corresponding departure
+        const depIndex = items.findIndex((d, idx) => idx > i && d.vesselName === item.vesselName && d.movementType === 'Departure');
+        if (depIndex !== -1) {
+          const departure = items[depIndex];
+          berthVisits[berth].push({
+            id: `visit-${item.id}-${departure.id}`,
+            vesselName: item.vesselName,
+            berth,
+            arrivalTime: new Date(item.scheduledTime),
+            departureTime: new Date(departure.scheduledTime),
+            arrivalRecord: item,
+            departureRecord: departure,
+            isEstimated: false,
+            isShift: false,
+          });
+          processedIds.add(item.id);
+          processedIds.add(departure.id);
+        } else {
+          // No corresponding departure: estimate 18 hour stay
+          const arrTime = new Date(item.scheduledTime);
+          const depTime = new Date(arrTime.getTime() + 18 * 60 * 60 * 1000);
+          berthVisits[berth].push({
+            id: `visit-${item.id}-est`,
+            vesselName: item.vesselName,
+            berth,
+            arrivalTime: arrTime,
+            departureTime: depTime,
+            arrivalRecord: item,
+            departureRecord: null,
+            isEstimated: true,
+            isShift: false,
+          });
+          processedIds.add(item.id);
+        }
+      } else if (item.movementType === 'Departure') {
+        // Departure without prior arrival in the list
+        const depTime = new Date(item.scheduledTime);
+        const arrTime = new Date(depTime.getTime() - 18 * 60 * 60 * 1000);
+        berthVisits[berth].push({
+          id: `visit-${item.id}-est`,
+          vesselName: item.vesselName,
+          berth,
+          arrivalTime: arrTime,
+          departureTime: depTime,
+          arrivalRecord: null,
+          departureRecord: item,
+          isEstimated: true,
+          isShift: false,
+        });
+        processedIds.add(item.id);
+      } else {
+        // Shift or Shift-destination
+        const schedTime = new Date(item.scheduledTime);
+        berthVisits[berth].push({
+          id: `visit-${item.id}-shift`,
+          vesselName: item.vesselName,
+          berth,
+          arrivalTime: new Date(schedTime.getTime() - 2 * 60 * 60 * 1000),
+          departureTime: new Date(schedTime.getTime() + 2 * 60 * 60 * 1000),
+          arrivalRecord: item,
+          departureRecord: null,
+          isEstimated: true,
+          isShift: true,
+        });
+        processedIds.add(item.id);
+      }
+    }
+  });
+
+  const getTimelineCoords = (arrivalTime: Date, departureTime: Date) => {
+    const tStart = new Date(currentTime.getTime() - 12 * 60 * 60 * 1000).getTime();
+    const tEnd = new Date(currentTime.getTime() + 36 * 60 * 60 * 1000).getTime();
+    const totalDuration = tEnd - tStart;
+
+    const startMs = arrivalTime.getTime();
+    const endMs = departureTime.getTime();
+
+    // Calculate left offset percentage
+    let left = ((startMs - tStart) / totalDuration) * 100;
+    // Calculate width percentage
+    let width = ((endMs - startMs) / totalDuration) * 100;
+
+    // Clamp values so they don't bleed out of the timeline box
+    if (left < 0) {
+      width = width + left; // decrease width by how much it's cut off on the left
+      left = 0;
+    }
+    if (left + width > 100) {
+      width = 100 - left;
+    }
+
+    // Return visible boolean, left and width
+    return {
+      visible: width > 0 && left < 100,
+      left: `${left}%`,
+      width: `${width}%`
+    };
+  };
+
+  const getTimelineRulerTicks = () => {
+    const ticks = [];
+    const tStart = new Date(currentTime.getTime() - 12 * 60 * 60 * 1000);
+    // Round to nearest 6 hour interval to align nicely
+    const startHour = Math.floor(tStart.getHours() / 6) * 6;
+    const rulerStart = new Date(tStart.getFullYear(), tStart.getMonth(), tStart.getDate(), startHour);
+
+    for (let i = 0; i <= 48; i += 6) {
+      const tickDate = new Date(rulerStart.getTime() + i * 60 * 60 * 1000);
+      const tStartMs = new Date(currentTime.getTime() - 12 * 60 * 60 * 1000).getTime();
+      const tEndMs = new Date(currentTime.getTime() + 36 * 60 * 60 * 1000).getTime();
+      const pct = ((tickDate.getTime() - tStartMs) / (tEndMs - tStartMs)) * 100;
+      if (pct >= 0 && pct <= 100) {
+        ticks.push({
+          label: format(tickDate, 'ccc HH:mm'),
+          percent: pct
+        });
+      }
+    }
+    return ticks;
+  };
+
   return (
     <div className="min-h-screen bg-[#030712] text-slate-100 flex font-sans">
       
@@ -363,34 +525,73 @@ export function NewDashboard() {
                   </div>
 
                   <div className="space-y-3 bg-[#070b19]/60 rounded-xl p-4 border border-slate-800">
-                    {schedule.slice(0, 5).map((vessel: any) => {
-                      const isArrival = vessel.movementType === 'Arrival';
-                      const berth = isArrival ? vessel.destination : vessel.origin;
-                      const hasConflict = projectedDelays[vessel.id];
+                    {/* Gantt Timeline Header Ruler */}
+                    <div className="grid grid-cols-4 items-center gap-4 border-b border-slate-800 pb-2 mb-2">
+                      <div className="text-[10px] text-slate-500 uppercase font-mono tracking-wider">Berth</div>
+                      <div className="col-span-3 h-5 relative">
+                        {getTimelineRulerTicks().map((tick, idx) => (
+                          <div
+                            key={idx}
+                            style={{ left: `${tick.percent}%` }}
+                            className="absolute -top-1 transform -translate-x-1/2 flex flex-col items-center"
+                          >
+                            <span className="text-[8px] text-slate-500 font-mono">{tick.label.split(' ')[1]}</span>
+                            <div className="w-px h-1 bg-slate-850" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
 
-                      return (
-                        <div key={vessel.id} className="grid grid-cols-4 items-center gap-4 py-2 border-b border-slate-800 last:border-b-0">
-                          <div className="text-xs font-semibold text-slate-300 truncate">{berth || 'Unallocated'}</div>
-                          <div className="col-span-3 h-8 bg-slate-800/40 rounded-lg relative overflow-hidden">
-                            <div
-                              style={{ left: `20%`, width: `50%` }}
-                              className={`absolute top-1 bottom-1 rounded-md px-3 flex items-center text-[10px] font-bold text-white overflow-hidden justify-between border ${
-                                hasConflict
-                                  ? 'bg-rose-500/20 border-rose-500 text-rose-300'
-                                  : 'bg-cyan-500/15 border-cyan-500/30 text-cyan-200'
-                              }`}
-                            >
-                              <Link href={`/vessel/${encodeURIComponent(vessel.vesselName)}`} className="hover:underline hover:text-cyan-300 truncate z-10 cursor-pointer">
-                                {vessel.vesselName} ({vessel.movementType})
-                              </Link>
-                              {hasConflict && (
-                                <span className="text-rose-400 animate-pulse">⚠️ Conflict Warning</span>
-                              )}
+                    {Object.entries(berthVisits)
+                      .filter(([_, visits]) => visits.length > 0)
+                      .slice(0, 5)
+                      .map(([berth, visits]) => {
+                        return (
+                          <div key={berth} className="grid grid-cols-4 items-center gap-4 py-2 border-b border-slate-800/40 last:border-b-0">
+                            <div className="text-[10px] font-bold text-slate-400 truncate" title={berth}>
+                              {berth.replace('Kooragang', 'K').replace('East Basin', 'EB').replace('West Basin', 'WB').replace('Mayfield', 'M')}
+                            </div>
+                            <div className="col-span-3 h-8 bg-slate-950/40 rounded-lg relative border border-slate-850/60 overflow-hidden">
+                              
+                              {/* Background hour grid lines */}
+                              {getTimelineRulerTicks().map((tick, idx) => (
+                                <div
+                                  key={idx}
+                                  style={{ left: `${tick.percent}%` }}
+                                  className="absolute top-0 bottom-0 w-px bg-slate-800/20"
+                                />
+                              ))}
+
+                              {visits.map((visit) => {
+                                const coords = getTimelineCoords(visit.arrivalTime, visit.departureTime);
+                                if (!coords.visible) return null;
+
+                                const hasConflict = (visit.arrivalRecord && projectedDelays[visit.arrivalRecord.id]) ||
+                                                    (visit.departureRecord && projectedDelays[visit.departureRecord.id]);
+
+                                return (
+                                  <div
+                                    key={visit.id}
+                                    style={{ left: coords.left, width: coords.width }}
+                                    className={`absolute top-1 bottom-1 rounded px-2 flex items-center text-[9px] font-bold text-white overflow-hidden justify-between border ${
+                                      hasConflict
+                                        ? 'bg-rose-500/20 border-rose-500 text-rose-300'
+                                        : visit.isEstimated
+                                          ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300'
+                                          : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
+                                    }`}
+                                    title={`${visit.vesselName} stay: ${format(visit.arrivalTime, 'MMM d, HH:mm')} - ${format(visit.departureTime, 'MMM d, HH:mm')}`}
+                                  >
+                                    <Link href={`/vessel/${encodeURIComponent(visit.vesselName)}`} className="hover:underline hover:text-cyan-300 truncate z-10 cursor-pointer">
+                                      {visit.vesselName}
+                                    </Link>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
                   </div>
                 </div>
               </div>
@@ -573,55 +774,142 @@ export function NewDashboard() {
 
           {/* TAB 3: DEDICATED BERTH PLANNER TIMELINE */}
           {activeTab === 'timeline' && (
-            <div className="bg-[#0f172a]/20 border border-slate-800/80 rounded-2xl p-6">
-              <h3 className="font-bold text-white flex items-center gap-2 mb-6">
-                <Clock className="w-5 h-5 text-cyan-400" />
-                Operational Berth Planner
-              </h3>
+            <div className="space-y-6">
+              
+              {/* Header and Legend */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                <div>
+                  <h3 className="font-bold text-white flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-cyan-400" />
+                    Operational Berth Planner
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">48-hour timeline view of vessel stays, arrivals, departures, and transits.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-4 text-[10px] bg-slate-900/40 p-2.5 border border-slate-800 rounded-xl">
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-emerald-500/15 border border-emerald-500/30" /> <span className="text-slate-300">Scheduled Visit</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-cyan-500/10 border border-cyan-500/20" /> <span className="text-slate-300">Estimated Stay</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-amber-500/10 border border-amber-500/30" /> <span className="text-slate-300">Transit/Shift</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-rose-500/20 border border-rose-500" /> <span className="text-rose-400">Schedule Conflict</span></div>
+                </div>
+              </div>
 
-              <div className="space-y-4 max-w-5xl">
-                {(Object.keys(berthCoordinates) as BerthName[]).map((berthName) => {
-                  const movements = berthOccupancy[berthName] || [];
-                  const isConflict = conflictBerths.has(berthName);
-
-                  return (
-                    <div key={berthName} className={`p-4 rounded-xl border grid grid-cols-1 md:grid-cols-4 gap-4 items-center ${
-                      isConflict ? 'border-amber-500/30 bg-amber-950/5' : 'border-slate-800/80 bg-slate-900/40'
-                    }`}>
-                      <div>
-                        <h4 className="font-bold text-slate-200">{berthName}</h4>
-                        <span className="text-[10px] text-slate-500 uppercase tracking-wider">{berthTypes[berthName]}</span>
-                      </div>
-                      
-                      <div className="md:col-span-3 space-y-2">
-                        {movements.length === 0 ? (
-                          <span className="text-xs text-slate-600 uppercase font-mono tracking-wider">No scheduled stay</span>
-                        ) : (
-                          movements.map((m: any) => {
-                            const delay = projectedDelays[m.id];
-                            return (
-                              <div key={m.id} className={`p-3 rounded-lg border text-xs flex justify-between items-center ${
-                                delay ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-slate-800/30 border-slate-800 text-slate-300'
-                              }`}>
-                                <div>
-                                  <Link href={`/vessel/${encodeURIComponent(m.vesselName)}`} className="font-bold text-white block hover:underline hover:text-cyan-400 cursor-pointer">
-                                    {m.vesselName} ({m.movementType})
-                                  </Link>
-                                  <span className="text-[10px] opacity-60">Scheduled: {format(new Date(m.scheduledTime), 'MMM d, HH:mm')}</span>
-                                </div>
-                                {delay && (
-                                  <span className="text-[10px] font-bold bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded border border-amber-500/30 flex items-center gap-1 animate-pulse">
-                                    <AlertTriangle className="w-3.5 h-3.5" /> Delay Projected
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
+              {/* Scrollable Timeline Grid */}
+              <div className="overflow-x-auto border border-slate-800/80 rounded-2xl bg-[#070b19]/60 backdrop-blur-md">
+                <div className="min-w-[1200px] flex flex-col">
+                  
+                  {/* Timeline Header Row (Ruler) */}
+                  <div className="flex border-b border-slate-800/80 h-10 items-center">
+                    <div className="w-48 flex-shrink-0 bg-slate-900/60 border-r border-slate-800 p-3 font-bold text-[10px] text-slate-400 uppercase tracking-widest font-mono">
+                      Berth ID
                     </div>
-                  );
-                })}
+                    <div className="flex-1 relative h-full">
+                      {getTimelineRulerTicks().map((tick, idx) => (
+                        <div
+                          key={idx}
+                          style={{ left: `${tick.percent}%` }}
+                          className="absolute bottom-0 transform -translate-x-1/2 flex flex-col items-center"
+                        >
+                          <span className="text-[8px] text-slate-400 font-mono font-semibold mb-1">{tick.label}</span>
+                          <div className="w-px h-1.5 bg-slate-700" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Berth Tracks */}
+                  <div className="divide-y divide-slate-800/40">
+                    {(Object.keys(berthCoordinates) as BerthName[]).map((berthName) => {
+                      const visits = berthVisits[berthName] || [];
+                      const isConflict = conflictBerths.has(berthName);
+
+                      return (
+                        <div key={berthName} className="flex h-14 hover:bg-slate-900/10">
+                          {/* Berth Label */}
+                          <div className={`w-48 flex-shrink-0 border-r border-slate-800 p-3 flex flex-col justify-center ${
+                            isConflict ? 'bg-amber-500/5' : 'bg-slate-900/20'
+                          }`}>
+                            <span className="text-xs font-bold text-slate-200 truncate">{berthName}</span>
+                            <span className="text-[9px] text-slate-500 tracking-wider mt-0.5">{berthTypes[berthName]}</span>
+                          </div>
+
+                          {/* Timeline Track */}
+                          <div className="flex-1 relative bg-slate-950/10 overflow-hidden">
+                            {/* Vertical hour grid lines */}
+                            {getTimelineRulerTicks().map((tick, idx) => (
+                              <div
+                                key={idx}
+                                style={{ left: `${tick.percent}%` }}
+                                className="absolute top-0 bottom-0 w-px bg-slate-850/30"
+                              />
+                            ))}
+
+                            {/* Plotted visits */}
+                            {visits.length === 0 ? (
+                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <span className="text-[9px] text-slate-700 uppercase font-mono tracking-widest">Vacant</span>
+                              </div>
+                            ) : (
+                              visits.map((visit) => {
+                                const coords = getTimelineCoords(visit.arrivalTime, visit.departureTime);
+                                if (!coords.visible) return null;
+
+                                const hasConflict = (visit.arrivalRecord && projectedDelays[visit.arrivalRecord.id]) ||
+                                                    (visit.departureRecord && projectedDelays[visit.departureRecord.id]);
+
+                                const delayText = (visit.arrivalRecord && projectedDelays[visit.arrivalRecord.id]) ||
+                                                  (visit.departureRecord && projectedDelays[visit.departureRecord.id]);
+
+                                return (
+                                  <div
+                                    key={visit.id}
+                                    style={{ left: coords.left, width: coords.width }}
+                                    className={`absolute top-2 bottom-2 rounded-lg px-3 flex items-center text-[10px] font-bold text-white overflow-hidden justify-between border shadow-sm transition-all group/bar cursor-pointer ${
+                                      hasConflict
+                                        ? 'bg-rose-500/20 border-rose-500 text-rose-300 hover:bg-rose-500/30'
+                                        : visit.isShift
+                                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
+                                          : visit.isEstimated
+                                            ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300 hover:bg-cyan-500/20'
+                                            : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200 hover:bg-emerald-500/25'
+                                    }`}
+                                  >
+                                    <Link href={`/vessel/${encodeURIComponent(visit.vesselName)}`} className="hover:underline truncate z-10 mr-1">
+                                      {visit.vesselName}
+                                    </Link>
+                                    {visit.isEstimated && (
+                                      <span className="text-[8px] opacity-40 font-mono flex-shrink-0">EST</span>
+                                    )}
+                                    {hasConflict && (
+                                      <span className="text-rose-400 text-[10px] flex-shrink-0">⚠️</span>
+                                    )}
+
+                                    {/* Tooltip on Hover */}
+                                    <div className="hidden group-hover/bar:block absolute left-1/2 bottom-full mb-2 transform -translate-x-1/2 bg-slate-950 border border-slate-800 text-slate-200 text-[10px] p-3 rounded-xl shadow-xl w-60 z-30 pointer-events-none leading-normal">
+                                      <div className="font-bold border-b border-slate-800 pb-1 mb-1.5 text-white flex justify-between">
+                                        <span>{visit.vesselName}</span>
+                                        {visit.isEstimated && <span className="text-cyan-400 text-[9px] font-normal uppercase">Estimated Stay</span>}
+                                      </div>
+                                      <div className="space-y-1">
+                                        <div>Arrival: <span className="text-slate-400">{format(visit.arrivalTime, 'MMM d, HH:mm')}</span></div>
+                                        <div>Departure: <span className="text-slate-400">{format(visit.departureTime, 'MMM d, HH:mm')}</span></div>
+                                        {delayText && (
+                                          <div className="text-rose-400 font-medium border-t border-rose-950/50 pt-1 mt-1">
+                                            ⚠️ {delayText}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                </div>
               </div>
             </div>
           )}
