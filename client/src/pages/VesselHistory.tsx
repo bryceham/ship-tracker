@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useRoute, Link } from 'wouter';
+import { Link } from 'wouter';
 import { fetchVesselHistory } from '../lib/api';
 import { Anchor, Clock, Compass, Activity, BarChart2, AlertTriangle, ArrowLeft, ArrowRight, MapPin } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { berthTypes, type BerthName } from '../components/berths';
 
-export function VesselHistory() {
-  const [, params] = useRoute('/vessel/:name');
+export function VesselHistory({ params }: { params: { name: string } }) {
   const vesselName = params?.name ? decodeURIComponent(params.name) : '';
   const [currentTime] = useState(new Date());
 
@@ -28,7 +27,7 @@ export function VesselHistory() {
     );
   }
 
-  if (error || !history) {
+  if (error || !history || !Array.isArray(history)) {
     return (
       <div className="min-h-screen bg-[#030712] text-slate-100 flex items-center justify-center">
         <div className="text-center p-8 bg-slate-900/40 border border-slate-800 rounded-2xl max-w-md">
