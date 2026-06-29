@@ -39,6 +39,25 @@ export function VesselHistory({ params }: { params: { name: string } }) {
     enabled: !!vesselName,
   });
 
+  // Filter out changes where only the status field changed (e.g. flipping to in port: yes)
+  const filteredHistory = useMemo(() => {
+    if (!history || !Array.isArray(history)) return [];
+    return history.filter((change: any) => {
+      if (change.changeType !== 'UPDATE') return true;
+
+      const prev = change.previousValue;
+      if (!prev) return true;
+
+      // Check if previousValue only contains the status field
+      const prevKeys = Object.keys(prev);
+      if (prevKeys.length === 1 && prevKeys[0] === 'status') {
+        return false; // Filter out status-only changes
+      }
+
+      return true;
+    });
+  }, [history]);
+
   // Deduplicate physical movements (getting only the latest state of each physical movement)
   const uniqueMovements = useMemo(() => {
     if (!history || !Array.isArray(history)) return [];
@@ -314,7 +333,7 @@ export function VesselHistory({ params }: { params: { name: string } }) {
               <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl min-w-[120px]">
                 <span className="text-[10px] text-slate-500 block uppercase font-medium">Stays / Movements</span>
                 <span className="text-xl font-black text-white block mt-1 font-mono">{stays.length} / {uniqueMovements.length}</span>
-                <span className="text-[10px] text-slate-400">{history.length} raw changes</span>
+                <span className="text-[10px] text-slate-400">{filteredHistory.length} raw changes</span>
               </div>
             </div>
           </div>
@@ -352,7 +371,7 @@ export function VesselHistory({ params }: { params: { name: string } }) {
               }`}
             >
               <History className="w-4 h-4" />
-              Raw Change Log ({history.length})
+              Raw Change Log ({filteredHistory.length})
             </button>
           </div>
 
@@ -513,13 +532,13 @@ export function VesselHistory({ params }: { params: { name: string } }) {
                 Vessel Port History Timeline (Raw Logs)
               </h3>
 
-              {history.length === 0 ? (
+              {filteredHistory.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="text-slate-500 text-sm">No recorded history logs for this vessel.</p>
                 </div>
               ) : (
                 <div className="relative border-l-2 border-slate-800/80 ml-4 pl-8 space-y-8">
-                  {history.map((record: any) => {
+                  {filteredHistory.map((record: any) => {
                     const isNew = record.changeType === 'NEW';
                     const isCompleted = record.changeType === 'COMPLETED';
                     const isRemoved = record.changeType === 'REMOVED';
