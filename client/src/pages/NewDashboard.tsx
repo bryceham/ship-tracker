@@ -117,17 +117,6 @@ export function NewDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  if (scheduleLoading || changesLoading || removedLoading) {
-    return (
-      <div className="min-h-screen bg-[#030712] text-slate-100 flex items-center justify-center font-sans">
-        <div className="flex flex-col items-center gap-4">
-          <Anchor className="w-12 h-12 text-cyan-400 animate-spin" />
-          <p className="text-sm font-semibold tracking-wider text-slate-400">Loading Control Room Dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
   // Map berth stats for easy lookup
   const berthStatsMap = React.useMemo(() => {
     const map: Record<string, any> = {};
@@ -138,6 +127,17 @@ export function NewDashboard() {
     }
     return map;
   }, [berthStats]);
+
+  if (scheduleLoading || changesLoading || removedLoading) {
+    return (
+      <div className="min-h-screen bg-[#030712] text-slate-100 flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <Anchor className="w-12 h-12 text-cyan-400 animate-spin" />
+          <p className="text-sm font-semibold tracking-wider text-slate-400">Loading Control Room Dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Group active vessels by berth & calculate conflicts
   const berthOccupancy: Record<string, any[]> = {};
