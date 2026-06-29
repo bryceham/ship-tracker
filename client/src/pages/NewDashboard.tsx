@@ -128,6 +128,17 @@ export function NewDashboard() {
     );
   }
 
+  // Map berth stats for easy lookup
+  const berthStatsMap = React.useMemo(() => {
+    const map: Record<string, any> = {};
+    if (Array.isArray(berthStats)) {
+      berthStats.forEach((stat: any) => {
+        map[stat.berth] = stat;
+      });
+    }
+    return map;
+  }, [berthStats]);
+
   // Group active vessels by berth & calculate conflicts
   const berthOccupancy: Record<string, any[]> = {};
   schedule.forEach((item: any) => {
@@ -150,10 +161,15 @@ export function NewDashboard() {
       const next = items[i + 1];
       const diffMs = new Date(next.scheduledTime).getTime() - new Date(current.scheduledTime).getTime();
       
-      // If two movements are within 3 hours, flag a turnaround conflict
-      if (diffMs < 3 * 60 * 60 * 1000) {
+      // Look up typical min turnaround for this berth (defaulting to 3 hours/180 mins)
+      const stats = berthStatsMap[berth];
+      const minTurnaroundMins = stats?.typicalMinTurnaroundMinutes ?? 180;
+      const minTurnaroundMs = minTurnaroundMins * 60 * 1000;
+      
+      // Flag conflict if movements are closer than the typical minimum turnaround
+      if (diffMs < minTurnaroundMs) {
         conflictBerths.add(berth);
-        projectedDelays[next.id] = `Turnaround warning: Scheduled only ${Math.round(diffMs / 60000)}m after ${current.vesselName}`;
+        projectedDelays[next.id] = `Turnaround warning: Scheduled only ${Math.round(diffMs / 60000)}m after ${current.vesselName} (typical min is ${minTurnaroundMins}m)`;
       }
     }
 
@@ -164,8 +180,13 @@ export function NewDashboard() {
         const departure = schedule.find((d: any) => d.vesselName === item.vesselName && d.movementType === 'Departure');
         if (departure) {
           const stayDuration = new Date(departure.scheduledTime).getTime() - new Date(item.scheduledTime).getTime();
-          if (stayDuration > 0 && stayDuration < 18 * 60 * 60 * 1000) {
-            projectedDelays[departure.id] = `Dwell warning: Dwell time is only ${parseFloat((stayDuration / (3600 * 1000)).toFixed(1))}h (normally 24-48h)`;
+          const stats = berthStatsMap[berth];
+          // Use historical average dwell hours as a reference (fallback to 24h)
+          const refDwellHours = stats?.avgDwellHours ?? 24;
+          const warningThresholdMs = (refDwellHours * 0.5) * 60 * 60 * 1000; // Warning if less than 50% of typical average dwell
+
+          if (stayDuration > 0 && stayDuration < warningThresholdMs) {
+            projectedDelays[departure.id] = `Dwell warning: Dwell time is only ${parseFloat((stayDuration / (3600 * 1000)).toFixed(1))}h (normally ~${refDwellHours}h)`;
             conflictBerths.add(berth);
           }
         }
@@ -213,6 +234,9 @@ export function NewDashboard() {
       const item = items[i];
       if (processedIds.has(item.id)) continue;
 
+      const stats = berthStatsMap[berth];
+      const estDwellHours = stats?.avgDwellHours ?? 18;
+
       if (item.movementType === 'Arrival') {
         // Find corresponding departure
         const depIndex = items.findIndex((d, idx) => idx > i && d.vesselName === item.vesselName && d.movementType === 'Departure');
@@ -232,9 +256,9 @@ export function NewDashboard() {
           processedIds.add(item.id);
           processedIds.add(departure.id);
         } else {
-          // No corresponding departure: estimate 18 hour stay
+          // No corresponding departure: estimate stay based on typical berth dwell time
           const arrTime = new Date(item.scheduledTime);
-          const depTime = new Date(arrTime.getTime() + 18 * 60 * 60 * 1000);
+          const depTime = new Date(arrTime.getTime() + estDwellHours * 60 * 60 * 1000);
           berthVisits[berth].push({
             id: `visit-${item.id}-est`,
             vesselName: item.vesselName,
@@ -249,9 +273,9 @@ export function NewDashboard() {
           processedIds.add(item.id);
         }
       } else if (item.movementType === 'Departure') {
-        // Departure without prior arrival in the list
+        // Departure without prior arrival in the list: estimate arrival based on typical berth dwell time
         const depTime = new Date(item.scheduledTime);
-        const arrTime = new Date(depTime.getTime() - 18 * 60 * 60 * 1000);
+        const arrTime = new Date(depTime.getTime() - estDwellHours * 60 * 60 * 1000);
         berthVisits[berth].push({
           id: `visit-${item.id}-est`,
           vesselName: item.vesselName,
@@ -1065,9 +1089,21 @@ export function NewDashboard() {
                           />
                           <YAxis stroke="#9ca3af" fontSize={11} unit="h" />
                           <Tooltip
-                            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
-                            itemStyle={{ color: '#e5e7eb' }}
-                            labelStyle={{ color: '#9ca3af' }}
+                            content={({ active, payload, label }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                  <div className="bg-[#1e293b] border border-slate-700 p-3 rounded-lg shadow-xl text-xs space-y-1">
+                                    <p className="font-bold text-slate-200">{label}</p>
+                                    <p className="text-cyan-400">Avg Dwell: <span className="font-mono font-bold text-white">{data.avgDwellHours}h</span></p>
+                                    <p className="text-amber-400">Typical Min Turnaround: <span className="font-mono font-bold text-white">{(data.typicalMinTurnaroundMinutes / 60).toFixed(1)}h</span> ({data.typicalMinTurnaroundMinutes}m)</p>
+                                    <p className="text-slate-400">Avg Turnaround: <span className="font-mono font-bold text-white">{(data.avgTurnaroundMinutes / 60).toFixed(1)}h</span> ({data.avgTurnaroundMinutes}m)</p>
+                                    <p className="text-slate-500 text-[10px] pt-1 border-t border-slate-800">Based on {data.totalMovements} movements</p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
                           />
                           <Bar dataKey="avgDwellHours" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Avg Dwell Duration" />
                         </BarChart>

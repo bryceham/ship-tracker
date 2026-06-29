@@ -183,15 +183,67 @@ api.get('/stats/berths', async (c) => {
         }
     });
 
+    // Group all movements by berth for turnaround analysis
+    const berthMovements: Record<string, typeof records> = {};
+    records.forEach((record) => {
+        const isArrival = record.movementType === 'Arrival';
+        const berth = isArrival ? record.destination : record.origin;
+        if (!berth) return;
+
+        if (!berthMovements[berth]) {
+            berthMovements[berth] = [];
+        }
+        berthMovements[berth].push(record);
+    });
+
+    const berthTurnaroundStats: Record<string, { typicalMinTurnaroundMinutes: number; avgTurnaroundMinutes: number }> = {};
+    Object.entries(berthMovements).forEach(([berth, items]) => {
+        items.sort((a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime());
+        
+        const turnarounds: number[] = [];
+        for (let i = 0; i < items.length - 1; i++) {
+            const current = items[i];
+            const next = items[i + 1];
+            
+            if (current.movementType === 'Departure' && next.movementType === 'Arrival') {
+                const diffMs = new Date(next.scheduledTime).getTime() - new Date(current.scheduledTime).getTime();
+                if (diffMs > 0) {
+                    turnarounds.push(diffMs / (60 * 1000));
+                }
+            }
+        }
+
+        if (turnarounds.length >= 3) {
+            turnarounds.sort((a, b) => a - b);
+            const avg = turnarounds.reduce((a, b) => a + b, 0) / turnarounds.length;
+            const p10 = turnarounds[Math.floor(turnarounds.length * 0.1)];
+            berthTurnaroundStats[berth] = {
+                typicalMinTurnaroundMinutes: Math.max(15, Math.round(p10)),
+                avgTurnaroundMinutes: Math.round(avg),
+            };
+        } else {
+            const avg = turnarounds.length > 0 
+                ? turnarounds.reduce((a, b) => a + b, 0) / turnarounds.length 
+                : 180;
+            berthTurnaroundStats[berth] = {
+                typicalMinTurnaroundMinutes: 180, // Default to 3 hours
+                avgTurnaroundMinutes: Math.round(avg),
+            };
+        }
+    });
+
     const result = Object.entries(berthStats).map(([name, stats]) => {
         const avgDwell = stats.stays.length > 0 ? stats.stays.reduce((a, b) => a + b, 0) / stats.stays.length : 0;
         const avgDelay = stats.delayedCount > 0 ? stats.totalDelayMinutes / stats.delayedCount : 0;
+        const tStats = berthTurnaroundStats[name] || { typicalMinTurnaroundMinutes: 180, avgTurnaroundMinutes: 180 };
 
         return {
             berth: name,
             totalMovements: stats.total,
             avgDwellHours: parseFloat(avgDwell.toFixed(1)),
             avgDelayMinutes: parseFloat(avgDelay.toFixed(1)),
+            typicalMinTurnaroundMinutes: tStats.typicalMinTurnaroundMinutes,
+            avgTurnaroundMinutes: tStats.avgTurnaroundMinutes,
         };
     }).sort((a, b) => b.totalMovements - a.totalMovements);
 
