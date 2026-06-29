@@ -237,20 +237,22 @@ api.get('/stats/berths', async (c) => {
         }
     });
 
-    const result = Object.entries(berthStats).map(([name, stats]) => {
-        const avgDwell = stats.stays.length > 0 ? stats.stays.reduce((a, b) => a + b, 0) / stats.stays.length : 0;
-        const avgDelay = stats.delayedCount > 0 ? stats.totalDelayMinutes / stats.delayedCount : 0;
-        const tStats = berthTurnaroundStats[name] || { typicalMinTurnaroundMinutes: 180, avgTurnaroundMinutes: 180 };
+    const result = Object.entries(berthStats)
+        .filter(([_, stats]) => stats.stays.length > 0)
+        .map(([name, stats]) => {
+            const avgDwell = stats.stays.reduce((a, b) => a + b, 0) / stats.stays.length;
+            const avgDelay = stats.delayedCount > 0 ? stats.totalDelayMinutes / stats.delayedCount : 0;
+            const tStats = berthTurnaroundStats[name] || { typicalMinTurnaroundMinutes: 180, avgTurnaroundMinutes: 180 };
 
-        return {
-            berth: name,
-            totalMovements: stats.total,
-            avgDwellHours: parseFloat(avgDwell.toFixed(1)),
-            avgDelayMinutes: parseFloat(avgDelay.toFixed(1)),
-            typicalMinTurnaroundMinutes: tStats.typicalMinTurnaroundMinutes,
-            avgTurnaroundMinutes: tStats.avgTurnaroundMinutes,
-        };
-    }).sort((a, b) => b.totalMovements - a.totalMovements);
+            return {
+                berth: name,
+                totalMovements: stats.total,
+                avgDwellHours: parseFloat(avgDwell.toFixed(1)),
+                avgDelayMinutes: parseFloat(avgDelay.toFixed(1)),
+                typicalMinTurnaroundMinutes: tStats.typicalMinTurnaroundMinutes,
+                avgTurnaroundMinutes: tStats.avgTurnaroundMinutes,
+            };
+        }).sort((a, b) => b.totalMovements - a.totalMovements);
 
     return c.json(result);
 });
@@ -418,15 +420,50 @@ api.get('/stats/berth-utilization', async (c) => {
             ne(vesselMovements.changeType, 'REMOVED'),
             gt(vesselMovements.scheduledTime, fourteenDaysAgo)
         ),
-        orderBy: [vesselMovements.vesselName, vesselMovements.scheduledTime],
+        orderBy: [desc(vesselMovements.scrapedAt)],
     });
+
+    // Deduplicate physical movements (getting only the latest scraped update/completed/new state of each)
+    const uniqueMovements: typeof records = [];
+    const processedGroups: { vesselName: string; movementType: string; scheduledTimeHistory: Set<number> }[] = [];
+
+    for (const record of records) {
+        const matchingGroup = processedGroups.find(g =>
+            g.vesselName === record.vesselName &&
+            g.movementType === record.movementType &&
+            (g.scheduledTimeHistory.has(record.scheduledTime.getTime()) ||
+             Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000))
+        );
+
+        if (matchingGroup) {
+            matchingGroup.scheduledTimeHistory.add(record.scheduledTime.getTime());
+            const prevVal = record.previousValue as Record<string, any> | null;
+            if (prevVal && prevVal.scheduledTime) {
+                matchingGroup.scheduledTimeHistory.add(new Date(prevVal.scheduledTime).getTime());
+            }
+        } else {
+            uniqueMovements.push(record);
+
+            const scheduledTimeHistory = new Set<number>([record.scheduledTime.getTime()]);
+            const prevVal = record.previousValue as Record<string, any> | null;
+            if (prevVal && prevVal.scheduledTime) {
+                scheduledTimeHistory.add(new Date(prevVal.scheduledTime).getTime());
+            }
+
+            processedGroups.push({
+                vesselName: record.vesselName,
+                movementType: record.movementType,
+                scheduledTimeHistory
+            });
+        }
+    }
 
     // Reconstruct stays grouped by berth
     const berthStays: Record<string, { arrival: Date; departure: Date; vesselName: string }[]> = {};
 
-    // First group records by vessel
+    // First group unique movements by vessel
     const movementsByVessel: Record<string, typeof records> = {};
-    records.forEach((record) => {
+    uniqueMovements.forEach((record) => {
         if (!movementsByVessel[record.vesselName]) {
             movementsByVessel[record.vesselName] = [];
         }
@@ -482,7 +519,8 @@ api.get('/stats/berth-utilization', async (c) => {
 
     // Calculate occupancy per berth within the 7-day window
     const result = Object.entries(berthStays).map(([berth, stays]) => {
-        let occupiedMs = 0;
+        // Collect overlap intervals
+        const intervals: { start: number; end: number }[] = [];
 
         stays.forEach((stay) => {
             const startMs = stay.arrival.getTime();
@@ -492,9 +530,28 @@ api.get('/stats/berth-utilization', async (c) => {
             const overlapEnd = Math.min(endMs, windowEnd.getTime());
 
             if (overlapEnd > overlapStart) {
-                occupiedMs += (overlapEnd - overlapStart);
+                intervals.push({ start: overlapStart, end: overlapEnd });
             }
         });
+
+        // Merge overlapping intervals to find union of occupied times
+        let occupiedMs = 0;
+        if (intervals.length > 0) {
+            intervals.sort((a, b) => a.start - b.start);
+            const merged: { start: number; end: number }[] = [];
+            let current = intervals[0];
+            for (let i = 1; i < intervals.length; i++) {
+                const next = intervals[i];
+                if (next.start <= current.end) {
+                    current.end = Math.max(current.end, next.end);
+                } else {
+                    merged.push(current);
+                    current = next;
+                }
+            }
+            merged.push(current);
+            occupiedMs = merged.reduce((sum, interval) => sum + (interval.end - interval.start), 0);
+        }
 
         const utilizationPercentage = (occupiedMs / totalWindowMs) * 100;
 
