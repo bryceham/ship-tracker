@@ -23,3 +23,16 @@ export async function fetchVesselHistory(vesselName: string) {
     if (!res.ok) throw new Error('Failed to fetch vessel history');
     return res.json();
 }
+
+export async function fetchDriftStats() {
+    const res = await fetch(`${API_URL}/stats/drift`);
+    if (!res.ok) throw new Error('Failed to fetch drift stats');
+    return res.json();
+}
+
+export async function fetchBerthUtilization() {
+    const res = await fetch(`${API_URL}/stats/berth-utilization`);
+    if (!res.ok) throw new Error('Failed to fetch berth utilization stats');
+    return res.json();
+}
+

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchSchedule, fetchChanges, fetchRemoved } from '../lib/api';
+import { fetchSchedule, fetchChanges, fetchRemoved, fetchDriftStats, fetchBerthUtilization } from '../lib/api';
 import { Anchor, Clock, Compass, Activity, BarChart2, AlertTriangle, History, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'wouter';
@@ -53,7 +53,7 @@ export function NewDashboard() {
     refetchInterval: 30000,
   });
 
-  const { data: removed = [], isLoading: removedLoading } = useQuery({
+  const { data: _removed = [], isLoading: removedLoading } = useQuery({
     queryKey: ['removed'],
     queryFn: fetchRemoved,
     refetchInterval: 30000,
@@ -85,6 +85,19 @@ export function NewDashboard() {
       return res.json();
     },
   });
+
+  const { data: driftStats = { averageDriftMinutes: 0, maxDriftMinutes: 0, totalRescheduledMovements: 0, driftByVessel: [], driftByAgent: [] } } = useQuery({
+    queryKey: ['drift-stats'],
+    queryFn: fetchDriftStats,
+    refetchInterval: 30000,
+  });
+
+  const { data: berthUtilization = [] } = useQuery({
+    queryKey: ['berth-utilization'],
+    queryFn: fetchBerthUtilization,
+    refetchInterval: 30000,
+  });
+
 
   // Clock & simulated tide updates
   useEffect(() => {
@@ -959,7 +972,7 @@ export function NewDashboard() {
             <div className="space-y-6">
               
               {/* Stat Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="p-6 bg-slate-900/40 border border-slate-800 rounded-2xl">
                   <span className="text-xs text-slate-400 block font-medium">Average Agent On-Time Rate</span>
                   <h4 className="text-3xl font-black text-white mt-1 font-mono text-cyan-400">
@@ -967,21 +980,28 @@ export function NewDashboard() {
                       ? `${(agentStats.reduce((acc: number, cur: any) => acc + cur.onTimePercentage, 0) / agentStats.length).toFixed(1)}%`
                       : '100%'}
                   </h4>
-                  <span className="text-[10px] text-emerald-400 mt-1 block">✓ High overall agent reliability index</span>
+                  <span className="text-[10px] text-emerald-400 mt-1 block">✓ High overall agent reliability</span>
                 </div>
                 <div className="p-6 bg-slate-900/40 border border-slate-800 rounded-2xl">
-                  <span className="text-xs text-slate-400 block font-medium">Completed Movements (28 Days)</span>
-                  <h4 className="text-3xl font-black text-white mt-1 font-mono text-emerald-400">
-                    {removed.filter((r: any) => r.changeType === 'COMPLETED').length.toString()}
+                  <span className="text-xs text-slate-400 block font-medium">Average Schedule Drift</span>
+                  <h4 className="text-3xl font-black text-white mt-1 font-mono text-amber-400">
+                    {driftStats.averageDriftMinutes > 0 ? `${driftStats.averageDriftMinutes}m` : '0m'}
                   </h4>
-                  <span className="text-[10px] text-emerald-400 mt-1 block">✓ All completed safely</span>
+                  <span className="text-[10px] text-slate-500 mt-1 block">Average timeline adjustment</span>
+                </div>
+                <div className="p-6 bg-slate-900/40 border border-slate-800 rounded-2xl">
+                  <span className="text-xs text-slate-400 block font-medium">Max Single Delay</span>
+                  <h4 className="text-3xl font-black text-white mt-1 font-mono text-rose-400">
+                    {driftStats.maxDriftMinutes > 0 ? `${parseFloat((driftStats.maxDriftMinutes / 60).toFixed(1))}h` : '0h'}
+                  </h4>
+                  <span className="text-[10px] text-slate-500 mt-1 block">Worst scheduled delay deviation</span>
                 </div>
                 <div className="p-6 bg-[#0f172a]/20 border border-slate-800 rounded-2xl">
-                  <span className="text-xs text-slate-400 block font-medium">Most Visited Berth</span>
+                  <span className="text-xs text-slate-400 block font-medium">Most Active Berth</span>
                   <h4 className="text-3xl font-black text-white mt-1 font-mono text-blue-400">
                     {berthStats.length > 0 ? berthStats[0].berth.split(' (')[0] : 'Kooragang 4'}
                   </h4>
-                  <span className="text-[10px] text-slate-500 mt-1 block">Highest utilization rate in Newcastle</span>
+                  <span className="text-[10px] text-slate-500 mt-1 block">Highest volume in last 28 days</span>
                 </div>
               </div>
 
@@ -1058,6 +1078,84 @@ export function NewDashboard() {
 
               </div>
 
+              {/* SECTION: Berth Utilization & Agent Drift Charts */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                {/* Berth Utilization Heatmap/Bar Chart */}
+                <div className="p-6 bg-[#0f172a]/20 border border-slate-800 rounded-2xl">
+                  <h3 className="font-bold text-white flex items-center gap-2 mb-6">
+                    <Activity className="w-5 h-5 text-cyan-400" />
+                    Berth Occupancy & Utilization Rate (7-Day Rolling)
+                  </h3>
+
+                  <div className="w-full h-80">
+                    {berthUtilization.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={berthUtilization.slice(0, 10)}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" vertical={false} />
+                          <XAxis
+                            dataKey="berth"
+                            stroke="#9ca3af"
+                            fontSize={10}
+                            tickFormatter={(value: string) => value.split(' (')[0].replace('Kooragang', 'K').replace('East Basin', 'EB').replace('West Basin', 'WB').replace('Mayfield', 'M')}
+                          />
+                          <YAxis stroke="#9ca3af" fontSize={11} unit="%" />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
+                            itemStyle={{ color: '#e5e7eb' }}
+                            labelStyle={{ color: '#9ca3af' }}
+                          />
+                          <Bar dataKey="utilizationPercentage" fill="#10b981" radius={[4, 4, 0, 0]} name="Utilization %" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-slate-500 text-xs">No utilization data available</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Agent Schedule Drift Leaderboard */}
+                <div className="p-6 bg-[#0f172a]/20 border border-slate-800 rounded-2xl flex flex-col overflow-hidden">
+                  <h3 className="font-bold text-white flex items-center gap-2 mb-4">
+                    <AlertTriangle className="w-5 h-5 text-cyan-400" />
+                    Schedule Volatility by Agent (Last 30 Days)
+                  </h3>
+                  
+                  <div className="overflow-y-auto max-h-[320px] pr-1">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-[10px] uppercase text-slate-500 tracking-wider">
+                          <th className="pb-3 font-semibold">Agent</th>
+                          <th className="pb-3 font-semibold text-right">Reschedules</th>
+                          <th className="pb-3 font-semibold text-right">Avg Drift</th>
+                          <th className="pb-3 font-semibold text-right">Total Drift</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-xs divide-y divide-slate-800/40">
+                        {driftStats.driftByAgent.map((item: any) => (
+                          <tr key={item.agent} className="hover:bg-slate-800/10">
+                            <td className="py-3 font-bold text-slate-200">{item.agent}</td>
+                            <td className="py-3 text-right text-slate-300">{item.reschedules}</td>
+                            <td className="py-3 text-right text-amber-400 font-mono font-bold">
+                              {item.avgDriftMinutes > 0 ? `${item.avgDriftMinutes}m` : '-'}
+                            </td>
+                            <td className="py-3 text-right text-slate-400">
+                              {item.totalDriftMinutes > 0 ? `${Math.round(item.totalDriftMinutes / 60)}h` : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                        {driftStats.driftByAgent.length === 0 && (
+                          <tr>
+                            <td colSpan={4} className="py-4 text-center text-slate-500">No volatility data yet</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
+
               {/* Daily Throughput Chart */}
               <div className="p-6 bg-[#0f172a]/20 border border-slate-800 rounded-2xl">
                 <h3 className="font-bold text-white flex items-center gap-2 mb-6">
@@ -1094,6 +1192,7 @@ export function NewDashboard() {
 
             </div>
           )}
+
 
           {activeTab === 'feed' && (
             <div className="bg-[#0f172a]/20 border border-slate-800/80 rounded-2xl p-6 max-w-4xl mx-auto">

@@ -175,6 +175,186 @@ api.get('/stats/berths', async (c) => {
     return c.json(result);
 });
 
+// GET /api/stats/drift
+api.get('/stats/drift', async (c) => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const updates = await db.query.vesselMovements.findMany({
+        where: and(
+            eq(vesselMovements.changeType, 'UPDATE'),
+            gt(vesselMovements.scrapedAt, thirtyDaysAgo)
+        ),
+    });
+
+    const driftByVessel: Record<string, { totalDrift: number; count: number }> = {};
+    const driftByAgent: Record<string, { totalDrift: number; count: number }> = {};
+    let totalDrift = 0;
+    let driftCount = 0;
+    let maxDrift = 0;
+
+    updates.forEach((up) => {
+        const prev = up.previousValue as Record<string, any> | null;
+        if (prev && prev.scheduledTime && up.scheduledTime) {
+            const prevTime = new Date(prev.scheduledTime).getTime();
+            const newTime = new Date(up.scheduledTime).getTime();
+            const diffMinutes = Math.round((newTime - prevTime) / (1000 * 60));
+
+            // Track any change, but particularly delays (positive values)
+            totalDrift += diffMinutes;
+            driftCount++;
+            if (Math.abs(diffMinutes) > Math.abs(maxDrift)) {
+                maxDrift = diffMinutes;
+            }
+
+            if (up.vesselName) {
+                if (!driftByVessel[up.vesselName]) {
+                    driftByVessel[up.vesselName] = { totalDrift: 0, count: 0 };
+                }
+                driftByVessel[up.vesselName].totalDrift += diffMinutes;
+                driftByVessel[up.vesselName].count++;
+            }
+
+            if (up.agent) {
+                if (!driftByAgent[up.agent]) {
+                    driftByAgent[up.agent] = { totalDrift: 0, count: 0 };
+                }
+                driftByAgent[up.agent].totalDrift += diffMinutes;
+                driftByAgent[up.agent].count++;
+            }
+        }
+    });
+
+    const vesselResult = Object.entries(driftByVessel).map(([name, stats]) => ({
+        vesselName: name,
+        avgDriftMinutes: parseFloat((stats.totalDrift / stats.count).toFixed(1)),
+        totalDriftMinutes: stats.totalDrift,
+        reschedules: stats.count,
+    })).sort((a, b) => b.totalDriftMinutes - a.totalDriftMinutes);
+
+    const agentResult = Object.entries(driftByAgent).map(([name, stats]) => ({
+        agent: name,
+        avgDriftMinutes: parseFloat((stats.totalDrift / stats.count).toFixed(1)),
+        totalDriftMinutes: stats.totalDrift,
+        reschedules: stats.count,
+    })).sort((a, b) => b.totalDriftMinutes - a.totalDriftMinutes);
+
+    return c.json({
+        averageDriftMinutes: driftCount > 0 ? parseFloat((totalDrift / driftCount).toFixed(1)) : 0,
+        maxDriftMinutes: maxDrift,
+        totalRescheduledMovements: driftCount,
+        driftByVessel: vesselResult.slice(0, 10),
+        driftByAgent: agentResult.slice(0, 10),
+    });
+});
+
+// GET /api/stats/berth-utilization
+api.get('/stats/berth-utilization', async (c) => {
+    // We compute utilization for a 7-day window
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const windowEnd = now;
+    const totalWindowMs = 7 * 24 * 60 * 60 * 1000;
+
+    // Fetch movements that are active or completed in the last 14 days to capture ongoing/past stays
+    const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const records = await db.query.vesselMovements.findMany({
+        where: and(
+            ne(vesselMovements.changeType, 'REMOVED'),
+            gt(vesselMovements.scheduledTime, fourteenDaysAgo)
+        ),
+        orderBy: [vesselMovements.vesselName, vesselMovements.scheduledTime],
+    });
+
+    // Reconstruct stays grouped by berth
+    const berthStays: Record<string, { arrival: Date; departure: Date; vesselName: string }[]> = {};
+
+    // First group records by vessel
+    const movementsByVessel: Record<string, typeof records> = {};
+    records.forEach((record) => {
+        if (!movementsByVessel[record.vesselName]) {
+            movementsByVessel[record.vesselName] = [];
+        }
+        movementsByVessel[record.vesselName].push(record);
+    });
+
+    // Match arrivals & departures
+    Object.entries(movementsByVessel).forEach(([vesselName, mvmtList]) => {
+        // Sort chronologically
+        mvmtList.sort((a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime());
+
+        for (let i = 0; i < mvmtList.length; i++) {
+            const mvmt = mvmtList[i];
+            if (mvmt.movementType === 'Arrival') {
+                const berth = mvmt.destination;
+                if (!berth) continue;
+
+                // Find subsequent departure
+                const dep = mvmtList.find((d, idx) => idx > i && d.movementType === 'Departure');
+                const arrivalTime = new Date(mvmt.scheduledTime);
+                const departureTime = dep ? new Date(dep.scheduledTime) : new Date(arrivalTime.getTime() + 18 * 60 * 60 * 1000); // default 18h stay if not left
+
+                if (!berthStays[berth]) {
+                    berthStays[berth] = [];
+                }
+                berthStays[berth].push({
+                    arrival: arrivalTime,
+                    departure: departureTime,
+                    vesselName,
+                });
+            } else if (mvmt.movementType === 'Departure') {
+                // If we have a departure but no preceding arrival was found in this window (e.g. vessel arrived >14 days ago)
+                const berth = mvmt.origin;
+                if (!berth) continue;
+
+                const hasPrecedingArrival = mvmtList.some((a, idx) => idx < mvmtList.indexOf(mvmt) && a.movementType === 'Arrival');
+                if (!hasPrecedingArrival) {
+                    const departureTime = new Date(mvmt.scheduledTime);
+                    const arrivalTime = new Date(departureTime.getTime() - 18 * 60 * 60 * 1000); // assume arrived 18h ago
+
+                    if (!berthStays[berth]) {
+                        berthStays[berth] = [];
+                    }
+                    berthStays[berth].push({
+                        arrival: arrivalTime,
+                        departure: departureTime,
+                        vesselName,
+                    });
+                }
+            }
+        }
+    });
+
+    // Calculate occupancy per berth within the 7-day window
+    const result = Object.entries(berthStays).map(([berth, stays]) => {
+        let occupiedMs = 0;
+
+        stays.forEach((stay) => {
+            const startMs = stay.arrival.getTime();
+            const endMs = stay.departure.getTime();
+
+            const overlapStart = Math.max(startMs, windowStart.getTime());
+            const overlapEnd = Math.min(endMs, windowEnd.getTime());
+
+            if (overlapEnd > overlapStart) {
+                occupiedMs += (overlapEnd - overlapStart);
+            }
+        });
+
+        const utilizationPercentage = (occupiedMs / totalWindowMs) * 100;
+
+        return {
+            berth,
+            utilizationPercentage: parseFloat(Math.min(100, utilizationPercentage).toFixed(1)),
+            occupiedHours: parseFloat((occupiedMs / (1000 * 60 * 60)).toFixed(1)),
+            totalMovements: stays.length,
+        };
+    }).sort((a, b) => b.utilizationPercentage - a.utilizationPercentage);
+
+    return c.json(result);
+});
+
+
 // GET /api/vessel/:vesselName/history
 api.get('/vessel/:vesselName/history', async (c) => {
     const vesselName = c.req.param('vesselName');
