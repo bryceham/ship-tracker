@@ -5,7 +5,7 @@ import { Anchor, Clock, Compass, Activity, BarChart2, AlertTriangle, History, Ar
 import { format } from 'date-fns';
 import { Link } from 'wouter';
 import { berthTypes, type BerthName } from '../components/berths';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ScatterChart, Scatter, ReferenceLine, Cell } from 'recharts';
 import { Feed } from '../components/Feed';
 
 // Coordinates of berths on our SVG map layout
@@ -1021,7 +1021,8 @@ export function NewDashboard() {
                           <th className="pb-3 font-semibold">Agent</th>
                           <th className="pb-3 font-semibold text-right">Voyages</th>
                           <th className="pb-3 font-semibold text-right">On-Time</th>
-                          <th className="pb-3 font-semibold text-right">Avg Delay</th>
+                          <th className="pb-3 font-semibold text-right">Avg Arr.</th>
+                          <th className="pb-3 font-semibold text-right">Avg Dep.</th>
                         </tr>
                       </thead>
                       <tbody className="text-xs divide-y divide-slate-800/40">
@@ -1030,12 +1031,13 @@ export function NewDashboard() {
                             <td className="py-3 font-bold text-slate-200">{item.agent}</td>
                             <td className="py-3 text-right text-slate-300">{item.totalVoyages}</td>
                             <td className="py-3 text-right text-emerald-400 font-mono font-bold">{item.onTimePercentage}%</td>
-                            <td className="py-3 text-right text-slate-400">{item.avgDelayMinutes > 0 ? `${item.avgDelayMinutes}m` : '-'}</td>
+                            <td className="py-3 text-right text-slate-400">{item.avgArrivalDelayMinutes > 0 ? `${item.avgArrivalDelayMinutes}m` : '-'}</td>
+                            <td className="py-3 text-right text-slate-400">{item.avgDepartureDelayMinutes > 0 ? `${item.avgDepartureDelayMinutes}m` : '-'}</td>
                           </tr>
                         ))}
                         {agentStats.length === 0 && (
                           <tr>
-                            <td colSpan={4} className="py-4 text-center text-slate-500">No agent data yet</td>
+                            <td colSpan={5} className="py-4 text-center text-slate-500">No agent data yet</td>
                           </tr>
                         )}
                       </tbody>
@@ -1127,8 +1129,8 @@ export function NewDashboard() {
                         <tr className="border-b border-slate-800 text-[10px] uppercase text-slate-500 tracking-wider">
                           <th className="pb-3 font-semibold">Agent</th>
                           <th className="pb-3 font-semibold text-right">Reschedules</th>
-                          <th className="pb-3 font-semibold text-right">Avg Drift</th>
-                          <th className="pb-3 font-semibold text-right">Total Drift</th>
+                          <th className="pb-3 font-semibold text-right">Avg Arr. Drift</th>
+                          <th className="pb-3 font-semibold text-right">Avg Dep. Drift</th>
                         </tr>
                       </thead>
                       <tbody className="text-xs divide-y divide-slate-800/40">
@@ -1137,10 +1139,10 @@ export function NewDashboard() {
                             <td className="py-3 font-bold text-slate-200">{item.agent}</td>
                             <td className="py-3 text-right text-slate-300">{item.reschedules}</td>
                             <td className="py-3 text-right text-amber-400 font-mono font-bold">
-                              {item.avgDriftMinutes > 0 ? `${item.avgDriftMinutes}m` : '-'}
+                              {item.avgArrivalDriftMinutes > 0 ? `${item.avgArrivalDriftMinutes}m` : '-'}
                             </td>
-                            <td className="py-3 text-right text-slate-400">
-                              {item.totalDriftMinutes > 0 ? `${Math.round(item.totalDriftMinutes / 60)}h` : '-'}
+                            <td className="py-3 text-right text-amber-400 font-mono font-bold">
+                              {item.avgDepartureDriftMinutes > 0 ? `${item.avgDepartureDriftMinutes}m` : '-'}
                             </td>
                           </tr>
                         ))}
@@ -1154,6 +1156,102 @@ export function NewDashboard() {
                   </div>
                 </div>
 
+              </div>
+
+              {/* SECTION: Voyage Drift Distribution Scatter Plot */}
+              <div className="p-6 bg-[#0f172a]/20 border border-slate-800 rounded-2xl">
+                <h3 className="font-bold text-white flex items-center gap-2 mb-2">
+                  <Activity className="w-5 h-5 text-cyan-400" />
+                  Voyage Schedule Drift Distribution (Completed Voyages)
+                </h3>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                  <p className="text-xs text-slate-400">
+                    Each dot represents one completed voyage. Dots above 0h indicate arrivals/departures that completed late (delays); dots below 0h indicate early completions.
+                  </p>
+                  <div className="flex items-center gap-3 text-[10px] bg-slate-900/60 p-2 border border-slate-800 rounded-lg">
+                    <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-[#3b82f6]" /> <span className="text-slate-300">Arrival</span></div>
+                    <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-[#f97316]" /> <span className="text-slate-300">Departure</span></div>
+                    <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-[#a855f7]" /> <span className="text-slate-300">Shift</span></div>
+                  </div>
+                </div>
+
+                <div className="w-full h-80">
+                  {driftStats.completedVoyages && driftStats.completedVoyages.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ScatterChart margin={{ top: 10, right: 30, bottom: 20, left: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
+                        <XAxis 
+                          dataKey="completedAt" 
+                          name="Completed Date" 
+                          stroke="#9ca3af" 
+                          fontSize={11}
+                          tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        />
+                        <YAxis 
+                          dataKey="driftHours" 
+                          name="Total Drift" 
+                          unit="h" 
+                          stroke="#9ca3af" 
+                          fontSize={11}
+                        />
+                        <ReferenceLine y={0} stroke="#475569" strokeDasharray="5 5" />
+                        <Tooltip
+                          cursor={{ strokeDasharray: '3 3' }}
+                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
+                          labelStyle={{ color: '#9ca3af' }}
+                          itemStyle={{ color: '#e5e7eb' }}
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              const isDelay = data.driftHours > 0;
+                              const isEarly = data.driftHours < 0;
+                              const movementColorsMap: Record<string, string> = {
+                                Arrival: '#3b82f6',
+                                Departure: '#f97316',
+                                Shift: '#a855f7'
+                              };
+                              const color = movementColorsMap[data.movementType] || '#38bdf8';
+                              return (
+                                <div className="bg-[#111827] border border-slate-700 p-3 rounded-lg text-xs leading-normal font-sans shadow-xl">
+                                  <div className="font-bold text-slate-200 flex items-center gap-1.5">
+                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                                    {data.vesselName} ({data.movementType})
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 mt-0.5">Completed: {new Date(data.completedAt).toLocaleString()}</div>
+                                  <div className={`mt-2 font-bold font-mono ${isDelay ? 'text-rose-400' : isEarly ? 'text-emerald-400' : 'text-slate-300'}`}>
+                                    {isDelay ? `⚠️ Delayed by ${data.driftHours} hours` : isEarly ? `✓ Early by ${Math.abs(data.driftHours)} hours` : 'On Time'}
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Scatter 
+                          name="Voyages" 
+                          data={driftStats.completedVoyages} 
+                          className="cursor-pointer"
+                        >
+                          {driftStats.completedVoyages.map((entry: any, index: number) => {
+                            const movementColorsMap: Record<string, string> = {
+                              Arrival: '#3b82f6',
+                              Departure: '#f97316',
+                              Shift: '#a855f7'
+                            };
+                            return (
+                              <Cell 
+                                key={`cell-${index}`} 
+                                fill={movementColorsMap[entry.movementType] || '#38bdf8'} 
+                              />
+                            );
+                          })}
+                        </Scatter>
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-slate-500 text-xs">No completed voyage drift distribution data available</div>
+                  )}
+                </div>
               </div>
 
               {/* Daily Throughput Chart */}

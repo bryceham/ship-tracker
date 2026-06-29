@@ -72,12 +72,26 @@ api.get('/stats/agents', async (c) => {
         where: sql`${vesselMovements.agent} IS NOT NULL`,
     });
 
-    const agentStats: Record<string, { total: number; delayed: number; totalDelayMinutes: number }> = {};
+    const agentStats: Record<string, {
+        total: number;
+        delayed: number;
+        arrivalDelayed: number;
+        arrivalDelayMinutes: number;
+        departureDelayed: number;
+        departureDelayMinutes: number;
+    }> = {};
 
     records.forEach((record) => {
         const agent = record.agent!;
         if (!agentStats[agent]) {
-            agentStats[agent] = { total: 0, delayed: 0, totalDelayMinutes: 0 };
+            agentStats[agent] = {
+                total: 0,
+                delayed: 0,
+                arrivalDelayed: 0,
+                arrivalDelayMinutes: 0,
+                departureDelayed: 0,
+                departureDelayMinutes: 0
+            };
         }
 
         const stats = agentStats[agent];
@@ -91,8 +105,15 @@ api.get('/stats/agents', async (c) => {
                 const newTime = new Date(record.scheduledTime).getTime();
                 const delayMs = newTime - prevTime;
                 if (delayMs > 0) {
+                    const delayMin = Math.round(delayMs / (1000 * 60));
                     stats.delayed++;
-                    stats.totalDelayMinutes += Math.round(delayMs / (1000 * 60));
+                    if (record.movementType === 'Arrival') {
+                        stats.arrivalDelayed++;
+                        stats.arrivalDelayMinutes += delayMin;
+                    } else if (record.movementType === 'Departure') {
+                        stats.departureDelayed++;
+                        stats.departureDelayMinutes += delayMin;
+                    }
                 }
             }
         }
@@ -100,13 +121,15 @@ api.get('/stats/agents', async (c) => {
 
     const result = Object.entries(agentStats).map(([name, stats]) => {
         const onTime = stats.total > 0 ? ((stats.total - stats.delayed) / stats.total) * 100 : 100;
-        const avgDelay = stats.delayed > 0 ? stats.totalDelayMinutes / stats.delayed : 0;
+        const avgArrivalDelay = stats.arrivalDelayed > 0 ? stats.arrivalDelayMinutes / stats.arrivalDelayed : 0;
+        const avgDepartureDelay = stats.departureDelayed > 0 ? stats.departureDelayMinutes / stats.departureDelayed : 0;
         return {
             agent: name,
             totalVoyages: stats.total,
             delayedVoyages: stats.delayed,
             onTimePercentage: parseFloat(onTime.toFixed(1)),
-            avgDelayMinutes: parseFloat(avgDelay.toFixed(1)),
+            avgArrivalDelayMinutes: parseFloat(avgArrivalDelay.toFixed(1)),
+            avgDepartureDelayMinutes: parseFloat(avgDepartureDelay.toFixed(1)),
         };
     }).sort((a, b) => b.onTimePercentage - a.onTimePercentage || b.totalVoyages - a.totalVoyages);
 
@@ -190,10 +213,18 @@ api.get('/stats/drift', async (c) => {
     });
 
     const driftByVessel: Record<string, { totalDrift: number; count: number }> = {};
-    const driftByAgent: Record<string, { totalDrift: number; count: number }> = {};
+    const driftByAgent: Record<string, {
+        arrivalTotalDrift: number;
+        arrivalCount: number;
+        departureTotalDrift: number;
+        departureCount: number;
+        totalCount: number;
+    }> = {};
     let totalDrift = 0;
     let voyageCount = 0;
     let maxDrift = 0;
+
+    const completedVoyages: { vesselName: string; movementType: string; driftHours: number; completedAt: string }[] = [];
 
     for (const completed of completedMovements) {
         // Fetch all history for this vessel and movement type
@@ -233,6 +264,13 @@ api.get('/stats/drift', async (c) => {
             totalDrift += totalDriftMinutes;
             voyageCount++;
 
+            completedVoyages.push({
+                vesselName: completed.vesselName,
+                movementType: completed.movementType,
+                driftHours: parseFloat((totalDriftMinutes / 60).toFixed(1)),
+                completedAt: completed.scrapedAt.toISOString(),
+            });
+
             if (Math.abs(totalDriftMinutes) > Math.abs(maxDrift)) {
                 maxDrift = totalDriftMinutes;
             }
@@ -247,10 +285,23 @@ api.get('/stats/drift', async (c) => {
 
             if (completed.agent) {
                 if (!driftByAgent[completed.agent]) {
-                    driftByAgent[completed.agent] = { totalDrift: 0, count: 0 };
+                    driftByAgent[completed.agent] = {
+                        arrivalTotalDrift: 0,
+                        arrivalCount: 0,
+                        departureTotalDrift: 0,
+                        departureCount: 0,
+                        totalCount: 0
+                    };
                 }
-                driftByAgent[completed.agent].totalDrift += totalDriftMinutes;
-                driftByAgent[completed.agent].count++;
+                const stats = driftByAgent[completed.agent];
+                stats.totalCount++;
+                if (completed.movementType === 'Arrival') {
+                    stats.arrivalTotalDrift += totalDriftMinutes;
+                    stats.arrivalCount++;
+                } else if (completed.movementType === 'Departure') {
+                    stats.departureTotalDrift += totalDriftMinutes;
+                    stats.departureCount++;
+                }
             }
         }
     }
@@ -264,10 +315,10 @@ api.get('/stats/drift', async (c) => {
 
     const agentResult = Object.entries(driftByAgent).map(([name, stats]) => ({
         agent: name,
-        avgDriftMinutes: parseFloat((stats.totalDrift / stats.count).toFixed(1)),
-        totalDriftMinutes: stats.totalDrift,
-        reschedules: stats.count,
-    })).sort((a, b) => b.totalDriftMinutes - a.totalDriftMinutes);
+        reschedules: stats.totalCount,
+        avgArrivalDriftMinutes: stats.arrivalCount > 0 ? parseFloat((stats.arrivalTotalDrift / stats.arrivalCount).toFixed(1)) : 0,
+        avgDepartureDriftMinutes: stats.departureCount > 0 ? parseFloat((stats.departureTotalDrift / stats.departureCount).toFixed(1)) : 0,
+    })).sort((a, b) => b.reschedules - a.reschedules);
 
     return c.json({
         averageDriftMinutes: voyageCount > 0 ? parseFloat((totalDrift / voyageCount).toFixed(1)) : 0,
@@ -275,6 +326,7 @@ api.get('/stats/drift', async (c) => {
         totalRescheduledMovements: voyageCount,
         driftByVessel: vesselResult.slice(0, 10),
         driftByAgent: agentResult.slice(0, 10),
+        completedVoyages: completedVoyages.reverse(),
     });
 });
 
