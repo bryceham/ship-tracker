@@ -180,50 +180,80 @@ api.get('/stats/drift', async (c) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const updates = await db.query.vesselMovements.findMany({
+    // Fetch all completed movements in the last 30 days
+    const completedMovements = await db.query.vesselMovements.findMany({
         where: and(
-            eq(vesselMovements.changeType, 'UPDATE'),
+            eq(vesselMovements.changeType, 'COMPLETED'),
             gt(vesselMovements.scrapedAt, thirtyDaysAgo)
         ),
+        orderBy: [desc(vesselMovements.scrapedAt)],
     });
 
     const driftByVessel: Record<string, { totalDrift: number; count: number }> = {};
     const driftByAgent: Record<string, { totalDrift: number; count: number }> = {};
     let totalDrift = 0;
-    let driftCount = 0;
+    let voyageCount = 0;
     let maxDrift = 0;
 
-    updates.forEach((up) => {
-        const prev = up.previousValue as Record<string, any> | null;
-        if (prev && prev.scheduledTime && up.scheduledTime) {
-            const prevTime = new Date(prev.scheduledTime).getTime();
-            const newTime = new Date(up.scheduledTime).getTime();
-            const diffMinutes = Math.round((newTime - prevTime) / (1000 * 60));
+    for (const completed of completedMovements) {
+        // Fetch all history for this vessel and movement type
+        const history = await db.query.vesselMovements.findMany({
+            where: and(
+                eq(vesselMovements.vesselName, completed.vesselName),
+                eq(vesselMovements.movementType, completed.movementType)
+            ),
+            orderBy: [vesselMovements.scrapedAt],
+        });
 
-            // Track any change, but particularly delays (positive values)
-            totalDrift += diffMinutes;
-            driftCount++;
-            if (Math.abs(diffMinutes) > Math.abs(maxDrift)) {
-                maxDrift = diffMinutes;
-            }
+        // Trace backwards from the completed record to find the earliest NEW/initial record
+        // of this same voyage using a 36-hour sliding window.
+        let matchingRecords = [completed];
+        let currentRecord = completed;
 
-            if (up.vesselName) {
-                if (!driftByVessel[up.vesselName]) {
-                    driftByVessel[up.vesselName] = { totalDrift: 0, count: 0 };
-                }
-                driftByVessel[up.vesselName].totalDrift += diffMinutes;
-                driftByVessel[up.vesselName].count++;
-            }
-
-            if (up.agent) {
-                if (!driftByAgent[up.agent]) {
-                    driftByAgent[up.agent] = { totalDrift: 0, count: 0 };
-                }
-                driftByAgent[up.agent].totalDrift += diffMinutes;
-                driftByAgent[up.agent].count++;
+        // Scan history backwards
+        const historyReverse = [...history].reverse();
+        for (const record of historyReverse) {
+            if (record.id === completed.id) continue;
+            
+            const timeDiff = Math.abs(new Date(record.scheduledTime).getTime() - new Date(currentRecord.scheduledTime).getTime());
+            if (timeDiff < 120 * 60 * 60 * 1000) { // 5-day window to prevent breaking chains on large delays
+                matchingRecords.push(record);
+                currentRecord = record; // step backward
             }
         }
-    });
+
+        // Find the oldest record in this matched chain
+        if (matchingRecords.length > 0) {
+            const originalRecord = matchingRecords[matchingRecords.length - 1];
+            
+            const originalTime = new Date(originalRecord.scheduledTime).getTime();
+            const completedTime = new Date(completed.scheduledTime).getTime();
+            const totalDriftMinutes = Math.round((completedTime - originalTime) / (1000 * 60));
+
+            totalDrift += totalDriftMinutes;
+            voyageCount++;
+
+            if (Math.abs(totalDriftMinutes) > Math.abs(maxDrift)) {
+                maxDrift = totalDriftMinutes;
+            }
+
+            if (completed.vesselName) {
+                if (!driftByVessel[completed.vesselName]) {
+                    driftByVessel[completed.vesselName] = { totalDrift: 0, count: 0 };
+                }
+                driftByVessel[completed.vesselName].totalDrift += totalDriftMinutes;
+                driftByVessel[completed.vesselName].count++;
+            }
+
+            if (completed.agent) {
+                if (!driftByAgent[completed.agent]) {
+                    driftByAgent[completed.agent] = { totalDrift: 0, count: 0 };
+                }
+                driftByAgent[completed.agent].totalDrift += totalDriftMinutes;
+                driftByAgent[completed.agent].count++;
+            }
+        }
+    }
 
     const vesselResult = Object.entries(driftByVessel).map(([name, stats]) => ({
         vesselName: name,
@@ -240,9 +270,9 @@ api.get('/stats/drift', async (c) => {
     })).sort((a, b) => b.totalDriftMinutes - a.totalDriftMinutes);
 
     return c.json({
-        averageDriftMinutes: driftCount > 0 ? parseFloat((totalDrift / driftCount).toFixed(1)) : 0,
+        averageDriftMinutes: voyageCount > 0 ? parseFloat((totalDrift / voyageCount).toFixed(1)) : 0,
         maxDriftMinutes: maxDrift,
-        totalRescheduledMovements: driftCount,
+        totalRescheduledMovements: voyageCount,
         driftByVessel: vesselResult.slice(0, 10),
         driftByAgent: agentResult.slice(0, 10),
     });

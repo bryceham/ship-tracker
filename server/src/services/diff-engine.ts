@@ -63,7 +63,7 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
         const isSameGroup = processedGroups.some(g =>
             g.vesselName === record.vesselName &&
             g.movementType === record.movementType &&
-            Math.abs(g.scheduledTime.getTime() - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000
+            Math.abs(g.scheduledTime.getTime() - record.scheduledTime.getTime()) < 120 * 60 * 60 * 1000
         );
 
         if (!isSameGroup) {
@@ -101,7 +101,7 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
         const matchedActive = activeMovements.find(am =>
             am.vesselName === vessel.vesselName &&
             am.movementType === vessel.movementType &&
-            Math.abs(am.scheduledTime.getTime() - vessel.scheduledTime.getTime()) < 36 * 60 * 60 * 1000
+            Math.abs(am.scheduledTime.getTime() - vessel.scheduledTime.getTime()) < 120 * 60 * 60 * 1000
         );
 
         if (!matchedActive) {
