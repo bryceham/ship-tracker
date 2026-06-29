@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import api from './routes/api';
 import { scrapeVessels } from './services/scraper';
+import { cleanupPingPongRecords } from './services/diff-engine';
 import dotenv from 'dotenv';
 import { readFile } from 'fs/promises';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -38,8 +39,9 @@ const startServer = async () => {
         console.log('Running database migrations...');
         await migrate(db, { migrationsFolder: './drizzle' });
         console.log('Migrations applied successfully.');
+        await cleanupPingPongRecords();
     } catch (error) {
-        console.error('Failed to run database migrations:', error);
+        console.error('Failed to run database migrations/cleanup:', error);
     }
 
     console.log(`Server is running on port ${port}`);

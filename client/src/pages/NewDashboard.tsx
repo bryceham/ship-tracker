@@ -634,7 +634,7 @@ export function NewDashboard() {
                                   <div
                                     key={visit.id}
                                     style={{ left: coords.left, width: coords.width }}
-                                    className={`absolute top-1 bottom-1 rounded px-2 flex items-center text-[9px] font-bold text-white justify-between border group/bar cursor-pointer ${
+                                    className={`absolute top-1 bottom-1 rounded px-2 flex items-center text-[9px] font-bold text-white hover:z-20 justify-between border group/bar cursor-pointer ${
                                       hasConflict
                                         ? 'bg-rose-500/20 border-rose-500 text-rose-300'
                                         : visit.isEstimated
@@ -940,7 +940,7 @@ export function NewDashboard() {
                                   <div
                                     key={visit.id}
                                     style={{ left: coords.left, width: coords.width }}
-                                    className={`absolute top-2 bottom-2 rounded-lg px-3 flex items-center text-[10px] font-bold text-white overflow-hidden justify-between border shadow-sm transition-all group/bar cursor-pointer ${
+                                    className={`absolute top-2 bottom-2 rounded-lg px-3 flex items-center text-[10px] font-bold text-white hover:z-20 justify-between border shadow-sm transition-all group/bar cursor-pointer ${
                                       hasConflict
                                         ? 'bg-rose-500/20 border-rose-500 text-rose-300 hover:bg-rose-500/30'
                                         : visit.isShift

@@ -289,7 +289,8 @@ api.get('/stats/drift', async (c) => {
         });
 
         // Trace backwards from the completed record to find the earliest NEW/initial record
-        // of this same voyage using a 36-hour sliding window.
+        // of this same voyage. We use the previousValue.scheduledTime chain for exact tracing,
+        // and fall back to a smaller sliding window to prevent matching unrelated voyages.
         let matchingRecords = [completed];
         let currentRecord = completed;
 
@@ -298,8 +299,23 @@ api.get('/stats/drift', async (c) => {
         for (const record of historyReverse) {
             if (record.id === completed.id) continue;
             
-            const timeDiff = Math.abs(new Date(record.scheduledTime).getTime() - new Date(currentRecord.scheduledTime).getTime());
-            if (timeDiff < 120 * 60 * 60 * 1000) { // 5-day window to prevent breaking chains on large delays
+            const currentPrevVal = currentRecord.previousValue as Record<string, any> | null;
+            let isPrevious = false;
+            
+            if (currentPrevVal && currentPrevVal.scheduledTime) {
+                const prevTime = new Date(currentPrevVal.scheduledTime).getTime();
+                if (new Date(record.scheduledTime).getTime() === prevTime) {
+                    isPrevious = true;
+                }
+            } else {
+                // Fallback: if no previousValue.scheduledTime, use a 36-hour window
+                const timeDiff = Math.abs(new Date(record.scheduledTime).getTime() - new Date(currentRecord.scheduledTime).getTime());
+                if (timeDiff < 36 * 60 * 60 * 1000) {
+                    isPrevious = true;
+                }
+            }
+            
+            if (isPrevious) {
                 matchingRecords.push(record);
                 currentRecord = record; // step backward
             }
