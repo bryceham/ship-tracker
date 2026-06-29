@@ -152,9 +152,13 @@ api.get('/stats/berths', async (c) => {
         }
 
         const stats = berthStats[berth];
-        stats.total++;
+        
+        // Count only completed movements towards total movements
+        if (record.changeType === 'COMPLETED') {
+            stats.total++;
+        }
 
-        // Calculate delays
+        // Calculate delays based on updates
         if (record.changeType === 'UPDATE' && record.previousValue) {
             const prev = record.previousValue as Record<string, any>;
             if (prev.scheduledTime) {
@@ -169,8 +173,8 @@ api.get('/stats/berths', async (c) => {
         }
     });
 
-    const arrivals = records.filter(r => r.movementType === 'Arrival' && r.changeType !== 'REMOVED');
-    const departures = records.filter(r => r.movementType === 'Departure' && r.changeType !== 'REMOVED');
+    const arrivals = records.filter(r => r.movementType === 'Arrival' && r.changeType === 'COMPLETED');
+    const departures = records.filter(r => r.movementType === 'Departure' && r.changeType === 'COMPLETED');
 
     arrivals.forEach((arr) => {
         const dep = departures.find(d => d.vesselName === arr.vesselName && new Date(d.scheduledTime) > new Date(arr.scheduledTime));
@@ -183,9 +187,10 @@ api.get('/stats/berths', async (c) => {
         }
     });
 
-    // Group all movements by berth for turnaround analysis
+    // Group only completed movements by berth for turnaround analysis
     const berthMovements: Record<string, typeof records> = {};
     records.forEach((record) => {
+        if (record.changeType !== 'COMPLETED') return;
         const isArrival = record.movementType === 'Arrival';
         const berth = isArrival ? record.destination : record.origin;
         if (!berth) return;
