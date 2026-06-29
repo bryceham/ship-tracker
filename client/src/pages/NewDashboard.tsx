@@ -1181,7 +1181,9 @@ export function NewDashboard() {
                       <ScatterChart margin={{ top: 10, right: 30, bottom: 20, left: 10 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
                         <XAxis 
-                          dataKey="completedAt" 
+                          dataKey="completedAtMs" 
+                          type="number"
+                          domain={['auto', 'auto']}
                           name="Completed Date" 
                           stroke="#9ca3af" 
                           fontSize={11}
@@ -1229,7 +1231,7 @@ export function NewDashboard() {
                         />
                         <Scatter 
                           name="Voyages" 
-                          data={driftStats.completedVoyages} 
+                          data={driftStats.completedVoyages.map((v: any) => ({ ...v, completedAtMs: new Date(v.completedAt).getTime() }))} 
                           className="cursor-pointer"
                         >
                           {driftStats.completedVoyages.map((entry: any, index: number) => {
