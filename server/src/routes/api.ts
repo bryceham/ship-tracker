@@ -68,8 +68,13 @@ api.get('/stats/daily-movements', async (c) => {
 
 // GET /api/stats/agents
 api.get('/stats/agents', async (c) => {
-    const records = await db.query.vesselMovements.findMany({
-        where: sql`${vesselMovements.agent} IS NOT NULL`,
+    // Fetch all completed movements where agent is not null
+    const completedMovements = await db.query.vesselMovements.findMany({
+        where: and(
+            eq(vesselMovements.changeType, 'COMPLETED'),
+            sql`${vesselMovements.agent} IS NOT NULL`
+        ),
+        orderBy: [desc(vesselMovements.scrapedAt)],
     });
 
     const agentStats: Record<string, {
@@ -81,8 +86,8 @@ api.get('/stats/agents', async (c) => {
         departureDelayMinutes: number;
     }> = {};
 
-    records.forEach((record) => {
-        const agent = record.agent!;
+    for (const completed of completedMovements) {
+        const agent = completed.agent!;
         if (!agentStats[agent]) {
             agentStats[agent] = {
                 total: 0,
@@ -97,27 +102,65 @@ api.get('/stats/agents', async (c) => {
         const stats = agentStats[agent];
         stats.total++;
 
-        // If it was updated and had a scheduledTime change, calculate the delay
-        if (record.changeType === 'UPDATE' && record.previousValue) {
-            const prev = record.previousValue as Record<string, any>;
-            if (prev.scheduledTime && record.scheduledTime) {
-                const prevTime = new Date(prev.scheduledTime).getTime();
-                const newTime = new Date(record.scheduledTime).getTime();
-                const delayMs = newTime - prevTime;
-                if (delayMs > 0) {
-                    const delayMin = Math.round(delayMs / (1000 * 60));
-                    stats.delayed++;
-                    if (record.movementType === 'Arrival') {
-                        stats.arrivalDelayed++;
-                        stats.arrivalDelayMinutes += delayMin;
-                    } else if (record.movementType === 'Departure') {
-                        stats.departureDelayed++;
-                        stats.departureDelayMinutes += delayMin;
-                    }
+        // Fetch all history for this vessel and movement type to trace the original scheduled time
+        const history = await db.query.vesselMovements.findMany({
+            where: and(
+                eq(vesselMovements.vesselName, completed.vesselName),
+                eq(vesselMovements.movementType, completed.movementType)
+            ),
+            orderBy: [vesselMovements.scrapedAt],
+        });
+
+        let matchingRecords = [completed];
+        let currentRecord = completed;
+
+        // Scan history backwards to trace the voyage
+        const historyReverse = [...history].reverse();
+        for (const record of historyReverse) {
+            if (record.id === completed.id) continue;
+            
+            const currentPrevVal = currentRecord.previousValue as Record<string, any> | null;
+            let isPrevious = false;
+            
+            if (currentPrevVal && currentPrevVal.scheduledTime) {
+                const prevTime = new Date(currentPrevVal.scheduledTime).getTime();
+                if (new Date(record.scheduledTime).getTime() === prevTime) {
+                    isPrevious = true;
+                }
+            } else {
+                // Fallback: if no previousValue.scheduledTime, use a 36-hour window
+                const timeDiff = Math.abs(new Date(record.scheduledTime).getTime() - new Date(currentRecord.scheduledTime).getTime());
+                if (timeDiff < 36 * 60 * 60 * 1000) {
+                    isPrevious = true;
+                }
+            }
+            
+            if (isPrevious) {
+                matchingRecords.push(record);
+                currentRecord = record; // step backward
+            }
+        }
+
+        // Find the oldest record in this matched chain
+        if (matchingRecords.length > 0) {
+            const originalRecord = matchingRecords[matchingRecords.length - 1];
+            
+            const originalTime = new Date(originalRecord.scheduledTime).getTime();
+            const completedTime = new Date(completed.scheduledTime).getTime();
+            const totalDriftMinutes = Math.round((completedTime - originalTime) / (1000 * 60));
+
+            if (totalDriftMinutes > 0) {
+                stats.delayed++;
+                if (completed.movementType === 'Arrival') {
+                    stats.arrivalDelayed++;
+                    stats.arrivalDelayMinutes += totalDriftMinutes;
+                } else if (completed.movementType === 'Departure') {
+                    stats.departureDelayed++;
+                    stats.departureDelayMinutes += totalDriftMinutes;
                 }
             }
         }
-    });
+    }
 
     const result = Object.entries(agentStats).map(([name, stats]) => {
         const onTime = stats.total > 0 ? ((stats.total - stats.delayed) / stats.total) * 100 : 100;
