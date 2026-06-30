@@ -214,95 +214,159 @@ export function NewDashboard() {
     berthVisits[berth] = [];
   });
 
-  // Group by berth
-  const movementsByBerth: Record<string, any[]> = {};
+  // Group by Vessel Name
+  const movementsByVessel: Record<string, any[]> = {};
   schedule.forEach((item: any) => {
-    const isArrival = item.movementType === 'Arrival';
-    const berth = isArrival ? item.destination : item.origin;
-    if (berth && berthVisits[berth]) {
-      if (!movementsByBerth[berth]) movementsByBerth[berth] = [];
-      movementsByBerth[berth].push(item);
+    if (item.vesselName) {
+      if (!movementsByVessel[item.vesselName]) movementsByVessel[item.vesselName] = [];
+      movementsByVessel[item.vesselName].push(item);
     }
   });
 
-  Object.entries(movementsByBerth).forEach(([berth, items]) => {
+  // Reconstruct visits for each vessel
+  Object.entries(movementsByVessel).forEach(([vesselName, items]) => {
+    // Sort chronologically
     items.sort((a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime());
-    
-    const processedIds = new Set<number>();
 
+    // Iterate through sorted movements to construct stays
     for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (processedIds.has(item.id)) continue;
+      const current = items[i];
+      const next = items[i + 1];
 
-      const stats = berthStatsMap[berth];
+      // Determine the berth we are dealing with for the stay
+      const currentBerth = current.movementType === 'Arrival' ? current.destination : current.origin;
+      if (!currentBerth || !berthVisits[currentBerth]) continue;
+
+      const stats = berthStatsMap[currentBerth];
       const estDwellHours = stats?.avgDwellHours ?? 18;
 
-      if (item.movementType === 'Arrival') {
-        // Find corresponding departure
-        const depIndex = items.findIndex((d, idx) => idx > i && d.vesselName === item.vesselName && d.movementType === 'Departure');
-        if (depIndex !== -1) {
-          const departure = items[depIndex];
-          berthVisits[berth].push({
-            id: `visit-${item.id}-${departure.id}`,
-            vesselName: item.vesselName,
-            berth,
-            arrivalTime: new Date(item.scheduledTime),
-            departureTime: new Date(departure.scheduledTime),
-            arrivalRecord: item,
-            departureRecord: departure,
+      if (current.movementType === 'Arrival') {
+        if (next) {
+          // If there is a next movement (Shift or Departure), the vessel stays at the arrival destination until that movement
+          const depTime = new Date(next.scheduledTime);
+          berthVisits[currentBerth].push({
+            id: `visit-${current.id}-${next.id}`,
+            vesselName,
+            berth: currentBerth,
+            arrivalTime: new Date(current.scheduledTime),
+            departureTime: depTime,
+            arrivalRecord: current,
+            departureRecord: next.movementType === 'Departure' ? next : null,
             isEstimated: false,
             isShift: false,
           });
-          processedIds.add(item.id);
-          processedIds.add(departure.id);
         } else {
-          // No corresponding departure: estimate stay based on typical berth dwell time
-          const arrTime = new Date(item.scheduledTime);
+          // No next movement: estimate the stay based on typical berth dwell time
+          const arrTime = new Date(current.scheduledTime);
           const depTime = new Date(arrTime.getTime() + estDwellHours * 60 * 60 * 1000);
-          berthVisits[berth].push({
-            id: `visit-${item.id}-est`,
-            vesselName: item.vesselName,
-            berth,
+          berthVisits[currentBerth].push({
+            id: `visit-${current.id}-est`,
+            vesselName,
+            berth: currentBerth,
             arrivalTime: arrTime,
             departureTime: depTime,
-            arrivalRecord: item,
+            arrivalRecord: current,
             departureRecord: null,
             isEstimated: true,
             isShift: false,
           });
-          processedIds.add(item.id);
         }
-      } else if (item.movementType === 'Departure') {
-        // Departure without prior arrival in the list: estimate arrival based on typical berth dwell time
-        const depTime = new Date(item.scheduledTime);
-        const arrTime = new Date(depTime.getTime() - estDwellHours * 60 * 60 * 1000);
-        berthVisits[berth].push({
-          id: `visit-${item.id}-est`,
-          vesselName: item.vesselName,
-          berth,
-          arrivalTime: arrTime,
-          departureTime: depTime,
-          arrivalRecord: null,
-          departureRecord: item,
-          isEstimated: true,
-          isShift: false,
-        });
-        processedIds.add(item.id);
-      } else {
-        // Shift or Shift-destination
-        const schedTime = new Date(item.scheduledTime);
-        berthVisits[berth].push({
-          id: `visit-${item.id}-shift`,
-          vesselName: item.vesselName,
-          berth,
-          arrivalTime: new Date(schedTime.getTime() - 2 * 60 * 60 * 1000),
-          departureTime: new Date(schedTime.getTime() + 2 * 60 * 60 * 1000),
-          arrivalRecord: item,
-          departureRecord: null,
-          isEstimated: true,
-          isShift: true,
-        });
-        processedIds.add(item.id);
+      } else if (current.movementType === 'Shift') {
+        // Shift represents departure from current.origin to current.destination.
+        // We handle the stay on current.destination starting at current.scheduledTime
+        const shiftDest = current.destination;
+        if (shiftDest && berthVisits[shiftDest]) {
+          const nextStats = berthStatsMap[shiftDest];
+          const nextEstDwellHours = nextStats?.avgDwellHours ?? 18;
+
+          if (next) {
+            // Stay at shift destination until the next movement
+            berthVisits[shiftDest].push({
+              id: `visit-${current.id}-${next.id}`,
+              vesselName,
+              berth: shiftDest,
+              arrivalTime: new Date(current.scheduledTime),
+              departureTime: new Date(next.scheduledTime),
+              arrivalRecord: current,
+              departureRecord: next.movementType === 'Departure' ? next : null,
+              isEstimated: false,
+              isShift: false,
+            });
+          } else {
+            // No next movement: estimate stay at shift destination
+            const arrTime = new Date(current.scheduledTime);
+            const depTime = new Date(arrTime.getTime() + nextEstDwellHours * 60 * 60 * 1000);
+            berthVisits[shiftDest].push({
+              id: `visit-${current.id}-est`,
+              vesselName,
+              berth: shiftDest,
+              arrivalTime: arrTime,
+              departureTime: depTime,
+              arrivalRecord: current,
+              departureRecord: null,
+              isEstimated: true,
+              isShift: false,
+            });
+          }
+        }
+
+        // Stay at current.origin BEFORE this shift
+        // If this Shift is the first movement in the list, we estimate the preceding stay.
+        if (i === 0) {
+          const shiftOrigin = current.origin;
+          if (shiftOrigin && berthVisits[shiftOrigin]) {
+            const originTime = new Date(current.scheduledTime);
+            const arrTime = new Date(originTime.getTime() - estDwellHours * 60 * 60 * 1000);
+            berthVisits[shiftOrigin].push({
+              id: `visit-${current.id}-prev-est`,
+              vesselName,
+              berth: shiftOrigin,
+              arrivalTime: arrTime,
+              departureTime: originTime,
+              arrivalRecord: null,
+              departureRecord: current,
+              isEstimated: true,
+              isShift: false,
+            });
+          }
+        }
+
+        // Add Shift Transit marker on current.origin
+        const schedTime = new Date(current.scheduledTime);
+        const shiftOrigin = current.origin;
+        if (shiftOrigin && berthVisits[shiftOrigin]) {
+          berthVisits[shiftOrigin].push({
+            id: `visit-${current.id}-shift-marker`,
+            vesselName,
+            berth: shiftOrigin,
+            arrivalTime: new Date(schedTime.getTime() - 2 * 60 * 60 * 1000),
+            departureTime: new Date(schedTime.getTime() + 2 * 60 * 60 * 1000),
+            arrivalRecord: current,
+            departureRecord: null,
+            isEstimated: true,
+            isShift: true,
+          });
+        }
+      } else if (current.movementType === 'Departure') {
+        // Departure. If this is the FIRST movement, we need to estimate the stay at origin leading up to departure.
+        if (i === 0) {
+          const depOrigin = current.origin;
+          if (depOrigin && berthVisits[depOrigin]) {
+            const depTime = new Date(current.scheduledTime);
+            const arrTime = new Date(depTime.getTime() - estDwellHours * 60 * 60 * 1000);
+            berthVisits[depOrigin].push({
+              id: `visit-${current.id}-prev-est`,
+              vesselName,
+              berth: depOrigin,
+              arrivalTime: arrTime,
+              departureTime: depTime,
+              arrivalRecord: null,
+              departureRecord: current,
+              isEstimated: true,
+              isShift: false,
+            });
+          }
+        }
       }
     }
   });
