@@ -1292,6 +1292,101 @@ export function NewDashboard() {
                 </div>
               </div>
 
+              {/* SECTION: Port Stay Duration Comparison Scatter Plot */}
+              <div className="p-6 bg-[#0f172a]/20 border border-slate-800 rounded-2xl">
+                <h3 className="font-bold text-white flex items-center gap-2 mb-2">
+                  <Clock className="w-5 h-5 text-cyan-400" />
+                  Voyage Port Stay Efficiency (Completed Voyages)
+                </h3>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                  <p className="text-xs text-slate-400">
+                    Compares the actual stay duration (Actual Departure - Actual Arrival) against the initially planned stay duration. Dots above 0h stayed longer than planned; dots below 0h stayed shorter than planned.
+                  </p>
+                  <div className="flex items-center gap-3 text-[10px] bg-slate-900/60 p-2 border border-slate-800 rounded-lg">
+                    <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-[#f97316]" /> <span className="text-slate-300">Overstayed</span></div>
+                    <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-[#10b981]" /> <span className="text-slate-300">Under/On Planned Stay</span></div>
+                  </div>
+                </div>
+
+                <div className="w-full h-80">
+                  {driftStats.completedStays && driftStats.completedStays.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ScatterChart margin={{ top: 10, right: 30, bottom: 20, left: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
+                        <XAxis 
+                          dataKey="completedAtMs" 
+                          type="number"
+                          domain={['auto', 'auto']}
+                          name="Completed Date" 
+                          stroke="#9ca3af" 
+                          fontSize={11}
+                          tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        />
+                        <YAxis 
+                          dataKey="driftHours" 
+                          name="Stay Drift" 
+                          unit="h" 
+                          stroke="#9ca3af" 
+                          fontSize={11}
+                        />
+                        <ReferenceLine y={0} stroke="#475569" strokeDasharray="5 5" />
+                        <Tooltip
+                          cursor={{ strokeDasharray: '3 3' }}
+                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
+                          labelStyle={{ color: '#9ca3af' }}
+                          itemStyle={{ color: '#e5e7eb' }}
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              const isDelay = data.driftHours > 0;
+                              const isEarly = data.driftHours < 0;
+                              return (
+                                <div className="bg-[#111827] border border-slate-700 p-3 rounded-lg text-xs leading-normal font-sans shadow-xl">
+                                  <div className="font-bold text-slate-200 flex items-center gap-1.5">
+                                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: isDelay ? '#f97316' : '#10b981' }} />
+                                    {data.vesselName}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 mt-0.5">Completed: {new Date(data.completedAt).toLocaleString()}</div>
+                                  
+                                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-slate-300 border-t border-slate-800 pt-2 font-sans">
+                                    <div>Planned Stay:</div>
+                                    <div className="font-mono text-right">{data.plannedStayHours}h</div>
+                                    <div>Actual Stay:</div>
+                                    <div className="font-mono text-right">{data.actualStayHours}h</div>
+                                  </div>
+
+                                  <div className={`mt-2 font-bold font-mono border-t border-slate-800 pt-2 ${isDelay ? 'text-rose-400' : isEarly ? 'text-emerald-400' : 'text-slate-300'}`}>
+                                    {isDelay ? `⚠️ Stayed ${data.driftHours} hours longer` : isEarly ? `✓ Left ${Math.abs(data.driftHours)} hours earlier` : 'Stayed as Planned'}
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Scatter 
+                          name="Stays" 
+                          data={driftStats.completedStays.map((v: any) => ({ ...v, completedAtMs: new Date(v.completedAt).getTime() }))} 
+                          className="cursor-pointer"
+                        >
+                          {driftStats.completedStays.map((entry: any, index: number) => {
+                            const isDelay = entry.driftHours > 0;
+                            return (
+                              <Cell 
+                                key={`cell-${index}`} 
+                                fill={isDelay ? '#f97316' : '#10b981'} 
+                              />
+                            );
+                          })}
+                        </Scatter>
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-slate-500 text-xs">No completed port stay efficiency data available</div>
+                  )}
+                </div>
+              </div>
+
               {/* Daily Throughput Chart */}
               <div className="p-6 bg-[#0f172a]/20 border border-slate-800 rounded-2xl">
                 <h3 className="font-bold text-white flex items-center gap-2 mb-6">
