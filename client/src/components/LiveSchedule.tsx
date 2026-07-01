@@ -10,9 +10,11 @@ export function LiveSchedule() {
         queryKey: ['schedule'],
         queryFn: async () => {
             const data = await fetchSchedule();
-            return data.sort((a: any, b: any) =>
-                new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime()
-            );
+            return data
+                .filter((item: any) => item.changeType !== 'COMPLETED')
+                .sort((a: any, b: any) =>
+                    new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime()
+                );
         },
         refetchInterval: 60000, // Refresh every minute
     });

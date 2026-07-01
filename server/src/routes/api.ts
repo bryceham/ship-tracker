@@ -44,8 +44,8 @@ api.get('/schedule', async (c) => {
     const activeSchedule = schedule.filter(item => {
         if (item.changeType === 'REMOVED') return false;
         if (item.changeType === 'COMPLETED') {
-            // Keep completed Arrival if the vessel still has an active/upcoming Departure
-            return item.movementType === 'Arrival' && activeVesselDepartures.has(item.vesselName);
+            // Keep completed Arrival or Shift if the vessel still has an active/upcoming Departure
+            return (item.movementType === 'Arrival' || item.movementType === 'Shift') && activeVesselDepartures.has(item.vesselName);
         }
         return true;
     });
