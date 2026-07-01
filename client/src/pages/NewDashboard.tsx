@@ -667,7 +667,7 @@ export function NewDashboard() {
                     {Object.entries(berthVisits)
                       .filter(([_, visits]) => visits.length > 0)
                       .slice(0, 5)
-                      .map(([berth, visits]) => {
+                      .map(([berth, visits], rowIndex) => {
                         return (
                           <div key={berth} className="grid grid-cols-4 items-center gap-4 py-2 border-b border-slate-800/40 last:border-b-0">
                             <div className="text-[10px] font-bold text-slate-400 truncate" title={berth}>
@@ -711,7 +711,9 @@ export function NewDashboard() {
                                     </Link>
 
                                     {/* Tooltip on Hover */}
-                                    <div className="hidden group-hover/bar:block absolute left-1/2 bottom-full mb-2 transform -translate-x-1/2 bg-slate-950 border border-slate-800 text-slate-200 text-[9px] p-2.5 rounded-lg shadow-xl w-52 z-30 pointer-events-none leading-normal font-sans font-medium">
+                                    <div className={`hidden group-hover/bar:block absolute left-1/2 ${
+                                      rowIndex === 0 ? 'top-full mt-2' : 'bottom-full mb-2'
+                                    } transform -translate-x-1/2 bg-slate-950 border border-slate-800 text-slate-200 text-[9px] p-2.5 rounded-lg shadow-xl w-52 z-30 pointer-events-none leading-normal font-sans font-medium`}>
                                       <div className="font-bold border-b border-slate-800 pb-1 mb-1 text-white flex justify-between">
                                         <span>{visit.vesselName}</span>
                                         {visit.isEstimated && <span className="text-cyan-400 text-[8px] font-normal uppercase">Estimated</span>}
@@ -959,7 +961,7 @@ export function NewDashboard() {
 
                   {/* Berth Tracks */}
                   <div className="divide-y divide-slate-800/40">
-                    {(Object.keys(berthCoordinates) as BerthName[]).map((berthName) => {
+                    {(Object.keys(berthCoordinates) as BerthName[]).map((berthName, rowIndex) => {
                       const visits = berthVisits[berthName] || [];
                       const isConflict = conflictBerths.has(berthName);
 
@@ -1025,7 +1027,9 @@ export function NewDashboard() {
                                     )}
 
                                     {/* Tooltip on Hover */}
-                                    <div className="hidden group-hover/bar:block absolute left-1/2 bottom-full mb-2 transform -translate-x-1/2 bg-slate-950 border border-slate-800 text-slate-200 text-[10px] p-3 rounded-xl shadow-xl w-60 z-30 pointer-events-none leading-normal">
+                                    <div className={`hidden group-hover/bar:block absolute left-1/2 ${
+                                      rowIndex < 3 ? 'top-full mt-2' : 'bottom-full mb-2'
+                                    } transform -translate-x-1/2 bg-slate-950 border border-slate-800 text-slate-200 text-[10px] p-3 rounded-xl shadow-xl w-60 z-30 pointer-events-none leading-normal`}>
                                       <div className="font-bold border-b border-slate-800 pb-1 mb-1.5 text-white flex justify-between">
                                         <span>{visit.vesselName}</span>
                                         {visit.isEstimated && <span className="text-cyan-400 text-[9px] font-normal uppercase">Estimated Stay</span>}

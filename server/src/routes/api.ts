@@ -32,8 +32,23 @@ api.get('/schedule', async (c) => {
         .from(vesselMovements)
         .orderBy(vesselMovements.vesselName, vesselMovements.movementType, desc(vesselMovements.scrapedAt));
 
-    // Filter out any records that are marked as REMOVED or COMPLETED
-    const activeSchedule = schedule.filter(item => item.changeType !== 'REMOVED' && item.changeType !== 'COMPLETED');
+    // A schedule item is active if it's not REMOVED or COMPLETED.
+    // However, if a vessel has an active Departure, we also want to keep its corresponding Arrival (even if COMPLETED)
+    // so that the frontend can compute the correct dwell/stay time.
+    const activeVesselDepartures = new Set(
+        schedule
+            .filter(item => item.movementType === 'Departure' && item.changeType !== 'REMOVED' && item.changeType !== 'COMPLETED')
+            .map(item => item.vesselName)
+    );
+
+    const activeSchedule = schedule.filter(item => {
+        if (item.changeType === 'REMOVED') return false;
+        if (item.changeType === 'COMPLETED') {
+            // Keep completed Arrival if the vessel still has an active/upcoming Departure
+            return item.movementType === 'Arrival' && activeVesselDepartures.has(item.vesselName);
+        }
+        return true;
+    });
 
     return c.json(activeSchedule);
 });
