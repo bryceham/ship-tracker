@@ -84,7 +84,11 @@ export function VesselHistory({ params }: { params: { name: string } }) {
           matchingGroup.scheduledTimeHistory.add(new Date(prevVal.scheduledTime).getTime());
         }
       } else {
-        uniqueList.push(record);
+        // If the latest record of this movement is REMOVED, we still process it
+        // so older updates are grouped/ignored, but we don't add it to uniqueList.
+        if (record.changeType !== 'REMOVED') {
+          uniqueList.push(record);
+        }
 
         const scheduledTimeHistory = new Set<number>([recTime]);
         const prevVal = record.previousValue;
@@ -103,86 +107,120 @@ export function VesselHistory({ params }: { params: { name: string } }) {
     return uniqueList.sort((a, b) => new Date(b.scheduledTime).getTime() - new Date(a.scheduledTime).getTime());
   }, [history]);
 
-  // Group movements into matched port stays
-  const stays = useMemo(() => {
+  // Group movements into matched port calls (visits) and berth occupancies (time on berth)
+  const portCalls = useMemo(() => {
     if (!uniqueMovements || uniqueMovements.length === 0) return [];
     
-    const arrivals = uniqueMovements.filter(m => m.movementType === 'Arrival');
-    const departures = uniqueMovements.filter(m => m.movementType === 'Departure');
+    // Sort chronologically (ascending) for processing
+    const chronoMovements = [...uniqueMovements].sort((a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime());
     
     const list: {
       id: string;
-      berth: string;
       arrival?: Date;
       departure?: Date;
       dwellHours?: number;
       isOngoing: boolean;
-      arrivalRecord?: any;
-      departureRecord?: any;
+      berthOccupancies: {
+        berth: string;
+        arrival?: Date;
+        departure?: Date;
+        dwellHours?: number;
+        isOngoing: boolean;
+        movementRecord?: any;
+      }[];
+      movements: any[];
     }[] = [];
-
-    // Match arrivals to subsequent departures
-    arrivals.forEach(arr => {
-      const arrTime = new Date(arr.scheduledTime);
+    
+    let currentCall: typeof list[0] | null = null;
+    
+    chronoMovements.forEach((record) => {
+      const recTime = new Date(record.scheduledTime);
+      const isCompleted = record.changeType === 'COMPLETED';
       
-      // Find the closest departure after this arrival
-      const matchingDep = departures
-        .filter(d => new Date(d.scheduledTime) > arrTime)
-        .sort((a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime())[0];
+      if (record.movementType === 'Arrival') {
+        currentCall = {
+          id: `portcall-${record.id}`,
+          arrival: recTime,
+          isOngoing: !isCompleted,
+          berthOccupancies: [],
+          movements: [record]
+        };
         
-      if (matchingDep) {
-        const depTime = new Date(matchingDep.scheduledTime);
-        const dwellMs = depTime.getTime() - arrTime.getTime();
-        list.push({
-          id: `stay-${arr.id}-${matchingDep.id}`,
-          berth: arr.destination || 'Unknown Berth',
-          arrival: arrTime,
-          departure: depTime,
-          dwellHours: dwellMs / (1000 * 60 * 60),
-          isOngoing: arr.changeType !== 'COMPLETED' || matchingDep.changeType !== 'COMPLETED',
-          arrivalRecord: arr,
-          departureRecord: matchingDep
+        currentCall.berthOccupancies.push({
+          berth: record.destination || 'Unknown Berth',
+          arrival: recTime,
+          isOngoing: !isCompleted,
+          movementRecord: record
         });
-      } else {
-        // Ongoing stay at this berth (no matching departure found yet)
-        list.push({
-          id: `stay-ongoing-${arr.id}`,
-          berth: arr.destination || 'Unknown Berth',
-          arrival: arrTime,
-          isOngoing: true,
-          arrivalRecord: arr
+        
+        list.push(currentCall);
+      } 
+      else if (record.movementType === 'Shift') {
+        if (!currentCall) {
+          currentCall = {
+            id: `portcall-orphan-shift-${record.id}`,
+            arrival: undefined,
+            isOngoing: true,
+            berthOccupancies: [],
+            movements: [record]
+          };
+          list.push(currentCall);
+        } else {
+          currentCall.movements.push(record);
+        }
+        
+        const lastOccupancy = currentCall.berthOccupancies[currentCall.berthOccupancies.length - 1];
+        if (lastOccupancy && !lastOccupancy.departure) {
+          lastOccupancy.departure = recTime;
+          lastOccupancy.dwellHours = (recTime.getTime() - (lastOccupancy.arrival?.getTime() || recTime.getTime())) / (1000 * 60 * 60);
+          lastOccupancy.isOngoing = false;
+        }
+        
+        currentCall.berthOccupancies.push({
+          berth: record.destination || 'Unknown Berth',
+          arrival: recTime,
+          isOngoing: !isCompleted,
+          movementRecord: record
         });
+      } 
+      else if (record.movementType === 'Departure') {
+        if (!currentCall) {
+          currentCall = {
+            id: `portcall-orphan-dep-${record.id}`,
+            arrival: undefined,
+            isOngoing: false,
+            berthOccupancies: [],
+            movements: [record]
+          };
+          list.push(currentCall);
+        } else {
+          currentCall.movements.push(record);
+        }
+        
+        const lastOccupancy = currentCall.berthOccupancies[currentCall.berthOccupancies.length - 1];
+        if (lastOccupancy) {
+          lastOccupancy.departure = recTime;
+          lastOccupancy.dwellHours = (recTime.getTime() - (lastOccupancy.arrival?.getTime() || recTime.getTime())) / (1000 * 60 * 60);
+          lastOccupancy.isOngoing = !isCompleted;
+        } else {
+          currentCall.berthOccupancies.push({
+            berth: record.origin || 'Unknown Berth',
+            departure: recTime,
+            isOngoing: !isCompleted,
+            movementRecord: record
+          });
+        }
+        
+        currentCall.departure = recTime;
+        if (currentCall.arrival) {
+          currentCall.dwellHours = (recTime.getTime() - currentCall.arrival.getTime()) / (1000 * 60 * 60);
+        }
+        currentCall.isOngoing = !isCompleted;
+        currentCall = null;
       }
     });
-
-    // Find departures that do not have matching arrivals (e.g., initial scraping gap)
-    departures.forEach(dep => {
-      const depTime = new Date(dep.scheduledTime);
-      
-      const hasMatchingArrival = arrivals.some(arr => {
-        const arrTime = new Date(arr.scheduledTime);
-        if (arrTime >= depTime) return false;
-        
-        // Ensure there isn't a closer departure in between
-        const intermediateDep = departures.some(d => {
-          const dTime = new Date(d.scheduledTime);
-          return dTime > arrTime && dTime < depTime;
-        });
-        return !intermediateDep;
-      });
-
-      if (!hasMatchingArrival) {
-        list.push({
-          id: `stay-orphan-dep-${dep.id}`,
-          berth: dep.origin || 'Unknown Berth',
-          departure: depTime,
-          isOngoing: false,
-          departureRecord: dep
-        });
-      }
-    });
-
-    // Sort stays descending by their latest timestamp (departure or arrival)
+    
+    // Sort descending by arrival/departure time for display
     return list.sort((a, b) => {
       const aTime = a.departure?.getTime() || a.arrival?.getTime() || 0;
       const bTime = b.departure?.getTime() || b.arrival?.getTime() || 0;
@@ -331,8 +369,8 @@ export function VesselHistory({ params }: { params: { name: string } }) {
                 <span className="text-[10px] text-slate-400">{safeFormatDistance(latestRecord?.scrapedAt)}</span>
               </div>
               <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl min-w-[120px]">
-                <span className="text-[10px] text-slate-500 block uppercase font-medium">Stays / Movements</span>
-                <span className="text-xl font-black text-white block mt-1 font-mono">{stays.length} / {uniqueMovements.length}</span>
+                <span className="text-[10px] text-slate-500 block uppercase font-medium">Port Calls / Movements</span>
+                <span className="text-xl font-black text-white block mt-1 font-mono">{portCalls.length} / {uniqueMovements.length}</span>
                 <span className="text-[10px] text-slate-400">{filteredHistory.length} raw changes</span>
               </div>
             </div>
@@ -349,7 +387,7 @@ export function VesselHistory({ params }: { params: { name: string } }) {
               }`}
             >
               <Calendar className="w-4 h-4" />
-              Port Calls ({stays.length})
+              Port Calls ({portCalls.length})
             </button>
             <button
               onClick={() => setActiveTab('movements')}
@@ -383,70 +421,89 @@ export function VesselHistory({ params }: { params: { name: string } }) {
                 Vessel Port Call History
               </h3>
 
-              {stays.length === 0 ? (
+              {portCalls.length === 0 ? (
                 <div className="text-center py-12 bg-[#0f172a]/10 border border-slate-800 rounded-xl">
-                  <p className="text-slate-500 text-sm">No matched time on berth records found for this vessel.</p>
+                  <p className="text-slate-500 text-sm">No matched port call records found for this vessel.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4">
-                  {stays.map(stay => (
-                    <div key={stay.id} className="p-5 bg-slate-900/40 border border-slate-800/80 rounded-xl space-y-4">
+                  {portCalls.map(call => (
+                    <div key={call.id} className="p-5 bg-slate-900/40 border border-slate-800/80 rounded-xl space-y-4">
+                      {/* Port Call Header */}
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2 bg-cyan-950/20 border border-cyan-800/40 rounded-lg text-cyan-400">
-                            <MapPin className="w-5 h-5" />
+                            <Anchor className="w-5 h-5" />
                           </div>
                           <div>
-                            <h4 className="font-bold text-slate-200 text-base">{stay.berth}</h4>
-                            <span className="text-xs text-slate-400">Berth Occupancy</span>
+                            <h4 className="font-bold text-slate-200 text-base">Port Call</h4>
+                            <span className="text-xs text-slate-400">
+                              {call.arrival ? safeFormat(call.arrival, 'MMM d, yyyy') : 'Historical Data'} 
+                              {call.departure ? ` to ${safeFormat(call.departure, 'MMM d, yyyy')}` : ' (Ongoing)'}
+                            </span>
                           </div>
                         </div>
 
                         <div className="text-left sm:text-right">
-                          {stay.dwellHours !== undefined ? (
+                          {call.dwellHours !== undefined ? (
                             <div className="inline-flex items-center gap-2 px-3 py-1 bg-cyan-500/10 border border-cyan-500/20 rounded-full text-cyan-400 font-bold text-xs">
                               <Clock className="w-3.5 h-3.5" />
-                              Dwell: {stay.dwellHours.toFixed(1)} hrs
+                              Total Port Dwell: {call.dwellHours.toFixed(1)} hrs
                             </div>
                           ) : (
                             <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/10 border border-amber-500/20 text-amber-400 animate-pulse">
-                              Ongoing time on berth
+                              Ongoing Port Call
                             </span>
                           )}
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div className="p-3 bg-slate-950/40 border border-slate-800/50 rounded-lg">
-                          <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold block mb-1">Arrival Telemetry</span>
-                          {stay.arrival ? (
-                            <div className="space-y-1">
-                              <p className="font-bold text-slate-300">{safeFormat(stay.arrival, 'EEEE, MMM d, yyyy @ HH:mm')}</p>
-                              {stay.arrivalRecord && (
-                                <p className="text-xs text-slate-500">
-                                  Status: <span className="text-emerald-400 font-semibold">{stay.arrivalRecord.changeType}</span> ({safeFormatDistance(stay.arrivalRecord.scrapedAt)})
-                                </p>
-                              )}
-                            </div>
-                          ) : (
-                            <p className="text-slate-500 italic">No recorded arrival time (historical gap)</p>
-                          )}
-                        </div>
+                      {/* Berth Occupancies timeline */}
+                      <div className="space-y-3">
+                        <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold block">Berth Occupancy Details</span>
+                        <div className="relative border-l-2 border-slate-800/80 ml-3 pl-6 space-y-4">
+                          {call.berthOccupancies.map((occupancy, oIdx) => (
+                            <div key={oIdx} className="relative group">
+                              <span className="absolute -left-[31px] top-1.5 flex h-3.5 w-3.5 rounded-full border-2 border-[#030712] justify-center items-center">
+                                <span className={`h-1.5 w-1.5 rounded-full ${occupancy.isOngoing ? 'bg-amber-500 animate-ping' : 'bg-cyan-400'}`} />
+                              </span>
+                              
+                              <div className="p-3 bg-slate-950/40 border border-slate-800/50 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-slate-200">{occupancy.berth}</span>
+                                    {oIdx > 0 && (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 uppercase tracking-wider font-semibold">
+                                        Shifted
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-slate-400 mt-1 space-y-0.5">
+                                    {occupancy.arrival && (
+                                      <p>Arrival: <strong className="text-slate-300">{safeFormat(occupancy.arrival, 'EEEE, MMM d @ HH:mm')}</strong></p>
+                                    )}
+                                    {occupancy.departure ? (
+                                      <p>Departure: <strong className="text-slate-300">{safeFormat(occupancy.departure, 'EEEE, MMM d @ HH:mm')}</strong></p>
+                                    ) : (
+                                      <p className="text-amber-400 italic">Currently alongside</p>
+                                    )}
+                                  </div>
+                                </div>
 
-                        <div className="p-3 bg-slate-950/40 border border-slate-800/50 rounded-lg">
-                          <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold block mb-1">Departure Telemetry</span>
-                          {stay.departure ? (
-                            <div className="space-y-1">
-                              <p className="font-bold text-slate-300">{safeFormat(stay.departure, 'EEEE, MMM d, yyyy @ HH:mm')}</p>
-                              {stay.departureRecord && (
-                                <p className="text-xs text-slate-500">
-                                  Status: <span className="text-emerald-400 font-semibold">{stay.departureRecord.changeType}</span> ({safeFormatDistance(stay.departureRecord.scrapedAt)})
-                                </p>
-                              )}
+                                <div className="text-left sm:text-right">
+                                  {occupancy.dwellHours !== undefined ? (
+                                    <span className="text-xs font-semibold text-slate-400">
+                                      Time on Berth: <strong className="text-cyan-400">{occupancy.dwellHours.toFixed(1)} hrs</strong>
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs font-semibold text-amber-400">
+                                      Ongoing berth stay
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          ) : (
-                            <p className="text-slate-500 italic">Still at berth / No departure scheduled</p>
-                          )}
+                          ))}
                         </div>
                       </div>
                     </div>
