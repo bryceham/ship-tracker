@@ -62,7 +62,7 @@ function ChangeCard({ change }: { change: any }) {
         const diffMs = newTime.getTime() - oldTime.getTime();
         const diffHours = Math.abs(diffMs) / (1000 * 60 * 60);
 
-        const movementType = isArrival ? 'arrival' : isDeparture ? 'departure' : isShift ? 'shift' : 'movement';
+        const movementType = isArrival ? 'arrival' : isDeparture ? 'departure' : isShift ? 'shifting' : 'movement';
         const direction = diffMs > 0 ? 'delayed' : 'brought forward';
 
         let timeDescription = '';
@@ -105,8 +105,8 @@ function ChangeCard({ change }: { change: any }) {
                     <div className="flex items-center gap-2 text-emerald-400">
                         <span className="font-semibold">
                             {isShift
-                                ? `New Shift Scheduled: ${change.origin} → ${change.destination}`
-                                : `New ${change.movementType} Scheduled`}
+                                ? `New Shifting Scheduled: ${change.origin} → ${change.destination}`
+                                : `New ${change.movementType === 'Shift' ? 'Shifting' : change.movementType} Scheduled`}
                         </span>
                     </div>
                 ) : isCompleted ? (
@@ -120,7 +120,7 @@ function ChangeCard({ change }: { change: any }) {
                 ) : isRemoved ? (
                     <div className="flex items-center gap-2 text-red-400">
                         <span className="font-semibold">
-                            {isShift ? 'Shift Cancelled' : `Vessel Removed from ${change.movementType}`}
+                            {isShift ? 'Shifting Cancelled' : `Vessel Removed from ${change.movementType === 'Shift' ? 'Shifting' : change.movementType}`}
                         </span>
                     </div>
                 ) : (
@@ -167,7 +167,7 @@ function ChangeCard({ change }: { change: any }) {
                 )}
 
                 <div className="mt-3 pt-3 border-t border-slate-700 flex gap-4 text-xs text-slate-400">
-                    <span>{change.movementType}</span>
+                    <span>{change.movementType === 'Shift' ? 'Shifting' : change.movementType}</span>
                     {shipType && <><span>•</span>
                         <span>{shipType}</span></>}
                 </div>

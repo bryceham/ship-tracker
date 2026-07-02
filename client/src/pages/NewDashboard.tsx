@@ -169,7 +169,7 @@ export function NewDashboard() {
       // Flag conflict if movements are closer than the typical minimum turnaround
       if (diffMs < minTurnaroundMs) {
         conflictBerths.add(berth);
-        projectedDelays[next.id] = `Turnaround warning: Scheduled only ${Math.round(diffMs / 60000)}m after ${current.vesselName} (typical min is ${minTurnaroundMins}m)`;
+        projectedDelays[next.id] = `Turnaround warning: Scheduled only ${parseFloat((diffMs / 3600000).toFixed(1))}h after ${current.vesselName} (typical min is ${parseFloat((minTurnaroundMins / 60).toFixed(1))}h)`;
       }
     }
 
@@ -194,8 +194,8 @@ export function NewDashboard() {
     });
   });
 
-  // Group movements into stays/visits
-  interface VesselVisit {
+  // Group movements into stays/occupancies
+  interface VesselTimeOnBerth {
     id: string | number;
     vesselName: string;
     berth: string;
@@ -207,11 +207,11 @@ export function NewDashboard() {
     isShift: boolean;
   }
 
-  const berthVisits: Record<string, VesselVisit[]> = {};
+  const berthOccupancies: Record<string, VesselTimeOnBerth[]> = {};
   
   // Initialize for all known berths
   Object.keys(berthCoordinates).forEach(berth => {
-    berthVisits[berth] = [];
+    berthOccupancies[berth] = [];
   });
 
   // Group by Vessel Name
@@ -235,7 +235,7 @@ export function NewDashboard() {
 
       // Determine the berth we are dealing with for the stay
       const currentBerth = current.movementType === 'Arrival' ? current.destination : current.origin;
-      if (!currentBerth || !berthVisits[currentBerth]) continue;
+      if (!currentBerth || !berthOccupancies[currentBerth]) continue;
 
       const stats = berthStatsMap[currentBerth];
       const estDwellHours = stats?.avgDwellHours ?? 18;
@@ -244,7 +244,7 @@ export function NewDashboard() {
         if (next) {
           // If there is a next movement (Shift or Departure), the vessel stays at the arrival destination until that movement
           const depTime = new Date(next.scheduledTime);
-          berthVisits[currentBerth].push({
+          berthOccupancies[currentBerth].push({
             id: `visit-${current.id}-${next.id}`,
             vesselName,
             berth: currentBerth,
@@ -259,7 +259,7 @@ export function NewDashboard() {
           // No next movement: estimate the stay based on typical berth dwell time
           const arrTime = new Date(current.scheduledTime);
           const depTime = new Date(arrTime.getTime() + estDwellHours * 60 * 60 * 1000);
-          berthVisits[currentBerth].push({
+          berthOccupancies[currentBerth].push({
             id: `visit-${current.id}-est`,
             vesselName,
             berth: currentBerth,
@@ -275,13 +275,13 @@ export function NewDashboard() {
         // Shift represents departure from current.origin to current.destination.
         // We handle the stay on current.destination starting at current.scheduledTime
         const shiftDest = current.destination;
-        if (shiftDest && berthVisits[shiftDest]) {
+        if (shiftDest && berthOccupancies[shiftDest]) {
           const nextStats = berthStatsMap[shiftDest];
           const nextEstDwellHours = nextStats?.avgDwellHours ?? 18;
 
           if (next) {
             // Stay at shift destination until the next movement
-            berthVisits[shiftDest].push({
+            berthOccupancies[shiftDest].push({
               id: `visit-${current.id}-${next.id}`,
               vesselName,
               berth: shiftDest,
@@ -296,7 +296,7 @@ export function NewDashboard() {
             // No next movement: estimate stay at shift destination
             const arrTime = new Date(current.scheduledTime);
             const depTime = new Date(arrTime.getTime() + nextEstDwellHours * 60 * 60 * 1000);
-            berthVisits[shiftDest].push({
+            berthOccupancies[shiftDest].push({
               id: `visit-${current.id}-est`,
               vesselName,
               berth: shiftDest,
@@ -314,10 +314,10 @@ export function NewDashboard() {
         // If this Shift is the first movement in the list, we estimate the preceding stay.
         if (i === 0) {
           const shiftOrigin = current.origin;
-          if (shiftOrigin && berthVisits[shiftOrigin]) {
+          if (shiftOrigin && berthOccupancies[shiftOrigin]) {
             const originTime = new Date(current.scheduledTime);
             const arrTime = new Date(originTime.getTime() - estDwellHours * 60 * 60 * 1000);
-            berthVisits[shiftOrigin].push({
+            berthOccupancies[shiftOrigin].push({
               id: `visit-${current.id}-prev-est`,
               vesselName,
               berth: shiftOrigin,
@@ -334,8 +334,8 @@ export function NewDashboard() {
         // Add Shift Transit marker on current.origin
         const schedTime = new Date(current.scheduledTime);
         const shiftOrigin = current.origin;
-        if (shiftOrigin && berthVisits[shiftOrigin]) {
-          berthVisits[shiftOrigin].push({
+        if (shiftOrigin && berthOccupancies[shiftOrigin]) {
+          berthOccupancies[shiftOrigin].push({
             id: `visit-${current.id}-shift-marker`,
             vesselName,
             berth: shiftOrigin,
@@ -351,10 +351,10 @@ export function NewDashboard() {
         // Departure. If this is the FIRST movement, we need to estimate the stay at origin leading up to departure.
         if (i === 0) {
           const depOrigin = current.origin;
-          if (depOrigin && berthVisits[depOrigin]) {
+          if (depOrigin && berthOccupancies[depOrigin]) {
             const depTime = new Date(current.scheduledTime);
             const arrTime = new Date(depTime.getTime() - estDwellHours * 60 * 60 * 1000);
-            berthVisits[depOrigin].push({
+            berthOccupancies[depOrigin].push({
               id: `visit-${current.id}-prev-est`,
               vesselName,
               berth: depOrigin,
@@ -554,8 +554,8 @@ export function NewDashboard() {
           {/* KPI Analytics Strip */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard title="Vessels in Port" count={vesselsInPortCount.toString()} subtitle="Active vessels at berth" icon={<Anchor className="text-blue-400" />} />
-            <KpiCard title="Arrivals (24h)" count={arrivals24hCount.toString()} subtitle="Incoming voyages" icon={<ArrowRight className="text-emerald-400" />} />
-            <KpiCard title="Departures (24h)" count={departures24hCount.toString()} subtitle="Outgoing voyages" icon={<ArrowRight className="text-orange-400" />} />
+            <KpiCard title="Arrivals (24h)" count={arrivals24hCount.toString()} subtitle="Incoming Movements" icon={<ArrowRight className="text-emerald-400" />} />
+            <KpiCard title="Departures (24h)" count={departures24hCount.toString()} subtitle="Outgoing Movements" icon={<ArrowRight className="text-orange-400" />} />
             <KpiCard title="Berth Conflicts" count={conflictBerths.size.toString()} subtitle="Delays/turnarounds projected" icon={<AlertTriangle className="text-amber-400" />} />
           </div>
 
@@ -624,7 +624,7 @@ export function NewDashboard() {
                           </span>
                           
                           <div className="absolute left-6 -top-2 bg-[#0b1329] border border-slate-700 text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
-                            {vessel.vesselName} ({vessel.movementType})
+                            {vessel.vesselName} ({vessel.movementType === 'Shift' ? 'Shifting' : vessel.movementType})
                           </div>
                         </div>
                       );
@@ -664,7 +664,7 @@ export function NewDashboard() {
                       </div>
                     </div>
 
-                    {Object.entries(berthVisits)
+                    {Object.entries(berthOccupancies)
                       .filter(([_, visits]) => visits.length > 0)
                       .slice(0, 5)
                       .map(([berth, visits], rowIndex) => {
@@ -701,9 +701,11 @@ export function NewDashboard() {
                                     className={`absolute top-1 bottom-1 rounded px-2 flex items-center text-[9px] font-bold text-white hover:z-20 justify-between border group/bar cursor-pointer ${
                                       hasConflict
                                         ? 'bg-rose-500/20 border-rose-500 text-rose-300'
-                                        : visit.isEstimated
-                                          ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300'
-                                          : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
+                                        : visit.isShift
+                                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                                          : visit.isEstimated
+                                            ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300'
+                                            : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200'
                                     }`}
                                   >
                                     <Link href={`/vessel/${encodeURIComponent(visit.vesselName)}`} className="hover:underline hover:text-cyan-300 truncate z-10 cursor-pointer">
@@ -716,7 +718,7 @@ export function NewDashboard() {
                                     } transform -translate-x-1/2 bg-slate-950 border border-slate-800 text-slate-200 text-[9px] p-2.5 rounded-lg shadow-xl w-52 z-30 pointer-events-none leading-normal font-sans font-medium`}>
                                       <div className="font-bold border-b border-slate-800 pb-1 mb-1 text-white flex justify-between">
                                         <span>{visit.vesselName}</span>
-                                        {visit.isEstimated && <span className="text-cyan-400 text-[8px] font-normal uppercase">Estimated</span>}
+                                        {visit.isEstimated && <span className="text-cyan-400 text-[8px] font-normal uppercase">Estimated Time on Berth</span>}
                                       </div>
                                       <div className="space-y-0.5">
                                         <div>Arr: <span className="text-slate-400">{format(visit.arrivalTime, 'MMM d, HH:mm')}</span></div>
@@ -880,7 +882,7 @@ export function NewDashboard() {
                         <span className="text-xs text-slate-500 uppercase tracking-widest block">Movement</span>
                         <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
                           selectedVessel.movementType === 'Arrival' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-orange-500/20 text-orange-400'
-                        }`}>{selectedVessel.movementType}</span>
+                        }`}>{selectedVessel.movementType === 'Shift' ? 'Shifting' : selectedVessel.movementType}</span>
                       </div>
                       <div>
                         <span className="text-xs text-slate-500 uppercase tracking-widest block">Status</span>
@@ -926,12 +928,12 @@ export function NewDashboard() {
                     <Clock className="w-5 h-5 text-cyan-400" />
                     Operational Berth Planner
                   </h3>
-                  <p className="text-xs text-slate-400 mt-1">48-hour timeline view of vessel stays, arrivals, departures, and transits.</p>
+                  <p className="text-xs text-slate-400 mt-1">48-hour timeline view of vessel occupancy, arrivals, departures, and transits.</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-4 text-[10px] bg-slate-900/40 p-2.5 border border-slate-800 rounded-xl">
-                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-emerald-500/15 border border-emerald-500/30" /> <span className="text-slate-300">Scheduled Visit</span></div>
-                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-cyan-500/10 border border-cyan-500/20" /> <span className="text-slate-300">Estimated Stay</span></div>
-                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-amber-500/10 border border-amber-500/30" /> <span className="text-slate-300">Transit/Shift</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-emerald-500/15 border border-emerald-500/30" /> <span className="text-slate-300">Scheduled Time on Berth</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-cyan-500/10 border border-cyan-500/20" /> <span className="text-slate-300">Estimated Time on Berth</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-amber-500/10 border border-amber-500/30" /> <span className="text-slate-300">Transit/Shifting</span></div>
                   <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-rose-500/20 border border-rose-500" /> <span className="text-rose-400">Schedule Conflict</span></div>
                 </div>
               </div>
@@ -962,7 +964,7 @@ export function NewDashboard() {
                   {/* Berth Tracks */}
                   <div className="divide-y divide-slate-800/40">
                     {(Object.keys(berthCoordinates) as BerthName[]).map((berthName, rowIndex) => {
-                      const visits = berthVisits[berthName] || [];
+                      const visits = berthOccupancies[berthName] || [];
                       const isConflict = conflictBerths.has(berthName);
 
                       return (
@@ -1032,7 +1034,7 @@ export function NewDashboard() {
                                     } transform -translate-x-1/2 bg-slate-950 border border-slate-800 text-slate-200 text-[10px] p-3 rounded-xl shadow-xl w-60 z-30 pointer-events-none leading-normal`}>
                                       <div className="font-bold border-b border-slate-800 pb-1 mb-1.5 text-white flex justify-between">
                                         <span>{visit.vesselName}</span>
-                                        {visit.isEstimated && <span className="text-cyan-400 text-[9px] font-normal uppercase">Estimated Stay</span>}
+                                        {visit.isEstimated && <span className="text-cyan-400 text-[9px] font-normal uppercase">Estimated Time on Berth</span>}
                                       </div>
                                       <div className="space-y-1">
                                         <div>Arrival: <span className="text-slate-400">{format(visit.arrivalTime, 'MMM d, HH:mm')}</span></div>
@@ -1077,7 +1079,7 @@ export function NewDashboard() {
                 <div className="p-6 bg-slate-900/40 border border-slate-800 rounded-2xl">
                   <span className="text-xs text-slate-400 block font-medium">Average Schedule Drift</span>
                   <h4 className="text-3xl font-black text-white mt-1 font-mono text-amber-400">
-                    {driftStats.averageDriftMinutes > 0 ? `${driftStats.averageDriftMinutes}m` : '0m'}
+                    {driftStats.averageDriftMinutes > 0 ? `${parseFloat((driftStats.averageDriftMinutes / 60).toFixed(1))}h` : '0h'}
                   </h4>
                   <span className="text-[10px] text-slate-500 mt-1 block">Average timeline adjustment</span>
                 </div>
@@ -1111,7 +1113,7 @@ export function NewDashboard() {
                       <thead>
                         <tr className="border-b border-slate-800 text-[10px] uppercase text-slate-500 tracking-wider">
                           <th className="pb-3 font-semibold">Agent</th>
-                          <th className="pb-3 font-semibold text-right">Voyages</th>
+                          <th className="pb-3 font-semibold text-right">Port Calls</th>
                           <th className="pb-3 font-semibold text-right">On-Time</th>
                           <th className="pb-3 font-semibold text-right">Avg Arr.</th>
                           <th className="pb-3 font-semibold text-right">Avg Dep.</th>
@@ -1121,10 +1123,10 @@ export function NewDashboard() {
                         {agentStats.map((item: any) => (
                           <tr key={item.agent} className="hover:bg-slate-800/10">
                             <td className="py-3 font-bold text-slate-200">{item.agent}</td>
-                            <td className="py-3 text-right text-slate-300">{item.totalVoyages}</td>
+                            <td className="py-3 text-right text-slate-300">{item.totalPortCalls}</td>
                             <td className="py-3 text-right text-emerald-400 font-mono font-bold">{item.onTimePercentage}%</td>
-                            <td className="py-3 text-right text-slate-400">{item.avgArrivalDelayMinutes > 0 ? `${item.avgArrivalDelayMinutes}m` : '-'}</td>
-                            <td className="py-3 text-right text-slate-400">{item.avgDepartureDelayMinutes > 0 ? `${item.avgDepartureDelayMinutes}m` : '-'}</td>
+                            <td className="py-3 text-right text-slate-400">{item.avgArrivalDelayMinutes > 0 ? `${parseFloat((item.avgArrivalDelayMinutes / 60).toFixed(1))}h` : '-'}</td>
+                            <td className="py-3 text-right text-slate-400">{item.avgDepartureDelayMinutes > 0 ? `${parseFloat((item.avgDepartureDelayMinutes / 60).toFixed(1))}h` : '-'}</td>
                           </tr>
                         ))}
                         {agentStats.length === 0 && (
@@ -1164,8 +1166,8 @@ export function NewDashboard() {
                                   <div className="bg-[#1e293b] border border-slate-700 p-3 rounded-lg shadow-xl text-xs space-y-1">
                                     <p className="font-bold text-slate-200">{label}</p>
                                     <p className="text-cyan-400">Avg Dwell: <span className="font-mono font-bold text-white">{data.avgDwellHours}h</span></p>
-                                    <p className="text-amber-400">Typical Min Turnaround: <span className="font-mono font-bold text-white">{(data.typicalMinTurnaroundMinutes / 60).toFixed(1)}h</span> ({data.typicalMinTurnaroundMinutes}m)</p>
-                                    <p className="text-slate-400">Avg Turnaround: <span className="font-mono font-bold text-white">{(data.avgTurnaroundMinutes / 60).toFixed(1)}h</span> ({data.avgTurnaroundMinutes}m)</p>
+                                    <p className="text-amber-400">Typical Min Turnaround: <span className="font-mono font-bold text-white">{parseFloat((data.typicalMinTurnaroundMinutes / 60).toFixed(1))}h</span></p>
+                                    <p className="text-slate-400">Avg Turnaround: <span className="font-mono font-bold text-white">{parseFloat((data.avgTurnaroundMinutes / 60).toFixed(1))}h</span></p>
                                     <p className="text-slate-500 text-[10px] pt-1 border-t border-slate-800">Based on {data.totalMovements} movements</p>
                                   </div>
                                 );
@@ -1243,10 +1245,10 @@ export function NewDashboard() {
                             <td className="py-3 font-bold text-slate-200">{item.agent}</td>
                             <td className="py-3 text-right text-slate-300">{item.reschedules}</td>
                             <td className="py-3 text-right text-amber-400 font-mono font-bold">
-                              {item.avgArrivalDriftMinutes > 0 ? `${item.avgArrivalDriftMinutes}m` : '-'}
+                              {item.avgArrivalDriftMinutes > 0 ? `${parseFloat((item.avgArrivalDriftMinutes / 60).toFixed(1))}h` : '-'}
                             </td>
                             <td className="py-3 text-right text-amber-400 font-mono font-bold">
-                              {item.avgDepartureDriftMinutes > 0 ? `${item.avgDepartureDriftMinutes}m` : '-'}
+                              {item.avgDepartureDriftMinutes > 0 ? `${parseFloat((item.avgDepartureDriftMinutes / 60).toFixed(1))}h` : '-'}
                             </td>
                           </tr>
                         ))}
@@ -1266,21 +1268,21 @@ export function NewDashboard() {
               <div className="p-6 bg-[#0f172a]/20 border border-slate-800 rounded-2xl">
                 <h3 className="font-bold text-white flex items-center gap-2 mb-2">
                   <Activity className="w-5 h-5 text-cyan-400" />
-                  Voyage Schedule Drift Distribution (Completed Voyages)
+                  Port Call Schedule Drift Distribution (Completed Port Calls)
                 </h3>
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                   <p className="text-xs text-slate-400">
-                    Each dot represents one completed voyage. Dots above 0h indicate arrivals/departures that completed late (delays); dots below 0h indicate early completions.
+                    Each dot represents one completed port call. Dots above 0h indicate arrivals/departures that completed late (delays); dots below 0h indicate early completions.
                   </p>
                   <div className="flex items-center gap-3 text-[10px] bg-slate-900/60 p-2 border border-slate-800 rounded-lg">
                     <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-[#3b82f6]" /> <span className="text-slate-300">Arrival</span></div>
                     <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-[#f97316]" /> <span className="text-slate-300">Departure</span></div>
-                    <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-[#a855f7]" /> <span className="text-slate-300">Shift</span></div>
+                    <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-[#a855f7]" /> <span className="text-slate-300">Shifting</span></div>
                   </div>
                 </div>
 
                 <div className="w-full h-80">
-                  {driftStats.completedVoyages && driftStats.completedVoyages.length > 0 ? (
+                  {driftStats.completedPortCalls && driftStats.completedPortCalls.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <ScatterChart margin={{ top: 10, right: 30, bottom: 20, left: 10 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
@@ -1334,11 +1336,11 @@ export function NewDashboard() {
                           }}
                         />
                         <Scatter 
-                          name="Voyages" 
-                          data={driftStats.completedVoyages.map((v: any) => ({ ...v, completedAtMs: new Date(v.completedAt).getTime() }))} 
+                          name="Port Calls" 
+                          data={driftStats.completedPortCalls.map((v: any) => ({ ...v, completedAtMs: new Date(v.completedAt).getTime() }))} 
                           className="cursor-pointer"
                         >
-                          {driftStats.completedVoyages.map((entry: any, index: number) => {
+                          {driftStats.completedPortCalls.map((entry: any, index: number) => {
                             const movementColorsMap: Record<string, string> = {
                               Arrival: '#3b82f6',
                               Departure: '#f97316',
@@ -1355,7 +1357,7 @@ export function NewDashboard() {
                       </ScatterChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-slate-500 text-xs">No completed voyage drift distribution data available</div>
+                    <div className="h-full flex items-center justify-center text-slate-500 text-xs">No completed port call drift distribution data available</div>
                   )}
                 </div>
               </div>
@@ -1364,7 +1366,7 @@ export function NewDashboard() {
               <div className="p-6 bg-[#0f172a]/20 border border-slate-800 rounded-2xl">
                 <h3 className="font-bold text-white flex items-center gap-2 mb-2">
                   <Clock className="w-5 h-5 text-cyan-400" />
-                  Voyage Port Stay Efficiency (Completed Voyages)
+                  Time on Berth Efficiency (Completed Port Calls)
                 </h3>
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                   <p className="text-xs text-slate-400">
@@ -1377,7 +1379,7 @@ export function NewDashboard() {
                 </div>
 
                 <div className="w-full h-80">
-                  {driftStats.completedStays && driftStats.completedStays.length > 0 ? (
+                  {driftStats.completedTimesOnBerth && driftStats.completedTimesOnBerth.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <ScatterChart margin={{ top: 10, right: 30, bottom: 20, left: 10 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
@@ -1417,9 +1419,9 @@ export function NewDashboard() {
                                   <div className="text-[10px] text-slate-500 mt-0.5">Completed: {new Date(data.completedAt).toLocaleString()}</div>
                                   
                                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-slate-300 border-t border-slate-800 pt-2 font-sans">
-                                    <div>Planned Stay:</div>
+                                    <div>Planned Time on Berth:</div>
                                     <div className="font-mono text-right">{data.plannedStayHours}h</div>
-                                    <div>Actual Stay:</div>
+                                    <div>Actual Time on Berth:</div>
                                     <div className="font-mono text-right">{data.actualStayHours}h</div>
                                   </div>
 
@@ -1434,10 +1436,10 @@ export function NewDashboard() {
                         />
                         <Scatter 
                           name="Stays" 
-                          data={driftStats.completedStays.map((v: any) => ({ ...v, completedAtMs: new Date(v.completedAt).getTime() }))} 
+                          data={driftStats.completedTimesOnBerth.map((v: any) => ({ ...v, completedAtMs: new Date(v.completedAt).getTime() }))} 
                           className="cursor-pointer"
                         >
-                          {driftStats.completedStays.map((entry: any, index: number) => {
+                          {driftStats.completedTimesOnBerth.map((entry: any, index: number) => {
                             const isDelay = entry.driftHours > 0;
                             return (
                               <Cell 
@@ -1450,7 +1452,7 @@ export function NewDashboard() {
                       </ScatterChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-slate-500 text-xs">No completed port stay efficiency data available</div>
+                    <div className="h-full flex items-center justify-center text-slate-500 text-xs">No completed time on berth efficiency data available</div>
                   )}
                 </div>
               </div>

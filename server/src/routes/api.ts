@@ -183,13 +183,13 @@ api.get('/stats/agents', async (c) => {
         const avgDepartureDelay = stats.departureDelayed > 0 ? stats.departureDelayMinutes / stats.departureDelayed : 0;
         return {
             agent: name,
-            totalVoyages: stats.total,
-            delayedVoyages: stats.delayed,
+            totalPortCalls: stats.total,
+            delayedPortCalls: stats.delayed,
             onTimePercentage: parseFloat(onTime.toFixed(1)),
             avgArrivalDelayMinutes: parseFloat(avgArrivalDelay.toFixed(1)),
             avgDepartureDelayMinutes: parseFloat(avgDepartureDelay.toFixed(1)),
         };
-    }).sort((a, b) => b.onTimePercentage - a.onTimePercentage || b.totalVoyages - a.totalVoyages);
+    }).sort((a, b) => b.onTimePercentage - a.onTimePercentage || b.totalPortCalls - a.totalPortCalls);
 
     return c.json(result);
 });
@@ -338,11 +338,11 @@ api.get('/stats/drift', async (c) => {
         totalCount: number;
     }> = {};
     let totalDrift = 0;
-    let voyageCount = 0;
+    let portCallCount = 0;
     let maxDrift = 0;
 
-    const completedVoyages: { vesselName: string; movementType: string; driftHours: number; completedAt: string }[] = [];
-    const completedStays: {
+    const completedPortCalls: { vesselName: string; movementType: string; driftHours: number; completedAt: string }[] = [];
+    const completedTimesOnBerth: {
         vesselName: string;
         actualStayHours: number;
         plannedStayHours: number;
@@ -395,9 +395,9 @@ api.get('/stats/drift', async (c) => {
         const totalDriftMinutes = Math.round((completedTime - originalTime) / (1000 * 60));
 
         totalDrift += totalDriftMinutes;
-        voyageCount++;
+        portCallCount++;
 
-        completedVoyages.push({
+        completedPortCalls.push({
             vesselName: completed.vesselName,
             movementType: completed.movementType,
             driftHours: parseFloat((totalDriftMinutes / 60).toFixed(1)),
@@ -425,7 +425,7 @@ api.get('/stats/drift', async (c) => {
                 const driftHours = parseFloat((actualStayHours - plannedStayHours).toFixed(1));
 
                 if (actualStayHours > 0 && actualStayHours < 14 * 24) {
-                    completedStays.push({
+                    completedTimesOnBerth.push({
                         vesselName: completed.vesselName,
                         actualStayHours,
                         plannedStayHours,
@@ -485,13 +485,13 @@ api.get('/stats/drift', async (c) => {
     })).sort((a, b) => b.reschedules - a.reschedules);
 
     return c.json({
-        averageDriftMinutes: voyageCount > 0 ? parseFloat((totalDrift / voyageCount).toFixed(1)) : 0,
+        averageDriftMinutes: portCallCount > 0 ? parseFloat((totalDrift / portCallCount).toFixed(1)) : 0,
         maxDriftMinutes: maxDrift,
-        totalRescheduledMovements: voyageCount,
+        totalRescheduledMovements: portCallCount,
         driftByVessel: vesselResult.slice(0, 10),
         driftByAgent: agentResult.slice(0, 10),
-        completedVoyages: completedVoyages.reverse(),
-        completedStays: completedStays.reverse(),
+        completedPortCalls: completedPortCalls.reverse(),
+        completedTimesOnBerth: completedTimesOnBerth.reverse(),
     });
 });
 

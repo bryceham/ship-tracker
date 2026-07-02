@@ -349,7 +349,7 @@ export function VesselHistory({ params }: { params: { name: string } }) {
               }`}
             >
               <Calendar className="w-4 h-4" />
-              Port Stays ({stays.length})
+              Port Calls ({stays.length})
             </button>
             <button
               onClick={() => setActiveTab('movements')}
@@ -380,12 +380,12 @@ export function VesselHistory({ params }: { params: { name: string } }) {
             <div className="space-y-4">
               <h3 className="font-bold text-white flex items-center gap-2 mb-2">
                 <Calendar className="w-5 h-5 text-cyan-400" />
-                Vessel Port Stay History
+                Vessel Port Call History
               </h3>
 
               {stays.length === 0 ? (
                 <div className="text-center py-12 bg-[#0f172a]/10 border border-slate-800 rounded-xl">
-                  <p className="text-slate-500 text-sm">No matched stays found for this vessel.</p>
+                  <p className="text-slate-500 text-sm">No matched time on berth records found for this vessel.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4">
@@ -398,7 +398,7 @@ export function VesselHistory({ params }: { params: { name: string } }) {
                           </div>
                           <div>
                             <h4 className="font-bold text-slate-200 text-base">{stay.berth}</h4>
-                            <span className="text-xs text-slate-400">Port Stay Visit</span>
+                            <span className="text-xs text-slate-400">Berth Occupancy</span>
                           </div>
                         </div>
 
@@ -410,7 +410,7 @@ export function VesselHistory({ params }: { params: { name: string } }) {
                             </div>
                           ) : (
                             <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/10 border border-amber-500/20 text-amber-400 animate-pulse">
-                              Ongoing stay
+                              Ongoing time on berth
                             </span>
                           )}
                         </div>
@@ -484,7 +484,7 @@ export function VesselHistory({ params }: { params: { name: string } }) {
                           
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-200">{record.movementType}</span>
+                              <span className="font-bold text-slate-200">{record.movementType === 'Shift' ? 'Shifting' : record.movementType}</span>
                               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
                                 isCompleted ? 'bg-emerald-500/10 text-emerald-400' : 'bg-cyan-500/10 text-cyan-400'
                               }`}>
@@ -500,7 +500,7 @@ export function VesselHistory({ params }: { params: { name: string } }) {
                                 <>Origin: <strong className="text-slate-300">{record.origin || 'N/A'}</strong></>
                               )}
                               {isShift && (
-                                <>Shift: <strong className="text-slate-300">{record.origin} → {record.destination}</strong></>
+                                <>Shifting: <strong className="text-slate-300">{record.origin} → {record.destination}</strong></>
                               )}
                             </div>
                           </div>
@@ -582,7 +582,7 @@ export function VesselHistory({ params }: { params: { name: string } }) {
                                 {record.changeType}
                               </span>
                               <span className="text-xs font-semibold text-slate-300">
-                                {record.movementType}
+                                {record.movementType === 'Shift' ? 'Shifting' : record.movementType}
                               </span>
                             </div>
                             <span className="text-xs text-slate-500 font-mono">

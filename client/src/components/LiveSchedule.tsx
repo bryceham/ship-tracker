@@ -67,7 +67,7 @@ export function LiveSchedule() {
                                             row.movementType === 'Departure' ? 'bg-orange-500/20 text-orange-400' :
                                             'bg-blue-500/20 text-blue-400'
                                         }`}>
-                                            {row.movementType}
+                                            {row.movementType === 'Shift' ? 'Shifting' : row.movementType}
                                         </span>
                                     </td>
                                     <td className="px-4 py-3">{format(new Date(row.scheduledTime), 'MMM d, HH:mm')}</td>
