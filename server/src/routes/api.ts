@@ -121,7 +121,8 @@ api.get('/stats/agents', async (c) => {
         const history = await db.query.vesselMovements.findMany({
             where: and(
                 eq(vesselMovements.vesselName, completed.vesselName),
-                eq(vesselMovements.movementType, completed.movementType)
+                eq(vesselMovements.movementType, completed.movementType),
+                eq(vesselMovements.agent, completed.agent as string)
             ),
             orderBy: [vesselMovements.scrapedAt],
         });
@@ -354,7 +355,8 @@ api.get('/stats/drift', async (c) => {
         const history = await db.query.vesselMovements.findMany({
             where: and(
                 eq(vesselMovements.vesselName, movementRecord.vesselName),
-                eq(vesselMovements.movementType, movementRecord.movementType)
+                eq(vesselMovements.movementType, movementRecord.movementType),
+                eq(vesselMovements.agent, movementRecord.agent as string)
             ),
             orderBy: [vesselMovements.scrapedAt],
         });
@@ -515,17 +517,29 @@ api.get('/stats/berth-utilization', async (c) => {
 
     // Deduplicate physical movements (getting only the latest scraped update/completed/new state of each)
     const uniqueMovements: typeof records = [];
-    const processedGroups: { vesselName: string; movementType: string; scheduledTimeHistory: Set<number> }[] = [];
+    const processedGroups: {
+        vesselName: string;
+        movementType: string;
+        agent: string | null;
+        scrapedAtTimes: Set<number>;
+        scheduledTimeHistory: Set<number>;
+    }[] = [];
 
     for (const record of records) {
-        const matchingGroup = processedGroups.find(g =>
-            g.vesselName === record.vesselName &&
-            g.movementType === record.movementType &&
-            (g.scheduledTimeHistory.has(record.scheduledTime.getTime()) ||
-             Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000))
-        );
+        const matchingGroup = processedGroups.find(g => {
+            if (g.vesselName !== record.vesselName || g.movementType !== record.movementType || g.agent !== record.agent) {
+                return false;
+            }
+            const fromSameScrape = Array.from(g.scrapedAtTimes).some(t => Math.abs(t - record.scrapedAt.getTime()) < 60 * 1000);
+            if (fromSameScrape) {
+                return false;
+            }
+            return g.scheduledTimeHistory.has(record.scheduledTime.getTime()) ||
+                   Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000);
+        });
 
         if (matchingGroup) {
+            matchingGroup.scrapedAtTimes.add(record.scrapedAt.getTime());
             matchingGroup.scheduledTimeHistory.add(record.scheduledTime.getTime());
             const prevVal = record.previousValue as Record<string, any> | null;
             if (prevVal && prevVal.scheduledTime) {
@@ -543,6 +557,8 @@ api.get('/stats/berth-utilization', async (c) => {
             processedGroups.push({
                 vesselName: record.vesselName,
                 movementType: record.movementType,
+                agent: record.agent,
+                scrapedAtTimes: new Set<number>([record.scrapedAt.getTime()]),
                 scheduledTimeHistory
             });
         }

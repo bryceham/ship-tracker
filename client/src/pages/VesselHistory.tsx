@@ -66,18 +66,31 @@ export function VesselHistory({ params }: { params: { name: string } }) {
     const sorted = [...history].sort((a, b) => new Date(b.scrapedAt).getTime() - new Date(a.scrapedAt).getTime());
     
     const uniqueList: any[] = [];
-    const processedGroups: { movementType: string; scheduledTimeHistory: Set<number> }[] = [];
+    const processedGroups: {
+      movementType: string;
+      agent: string | null;
+      scrapedAtTimes: Set<number>;
+      scheduledTimeHistory: Set<number>;
+    }[] = [];
 
     for (const record of sorted) {
       const recTime = new Date(record.scheduledTime).getTime();
+      const scrapTime = new Date(record.scrapedAt).getTime();
       
-      const matchingGroup = processedGroups.find(g =>
-        g.movementType === record.movementType &&
-        (g.scheduledTimeHistory.has(recTime) ||
-         Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - recTime) < 36 * 60 * 60 * 1000))
-      );
+      const matchingGroup = processedGroups.find(g => {
+        if (g.movementType !== record.movementType || g.agent !== record.agent) {
+          return false;
+        }
+        const fromSameScrape = Array.from(g.scrapedAtTimes).some(t => Math.abs(t - scrapTime) < 60 * 1000);
+        if (fromSameScrape) {
+          return false;
+        }
+        return g.scheduledTimeHistory.has(recTime) ||
+               Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - recTime) < 36 * 60 * 60 * 1000);
+      });
 
       if (matchingGroup) {
+        matchingGroup.scrapedAtTimes.add(scrapTime);
         matchingGroup.scheduledTimeHistory.add(recTime);
         const prevVal = record.previousValue;
         if (prevVal && prevVal.scheduledTime) {
@@ -98,6 +111,8 @@ export function VesselHistory({ params }: { params: { name: string } }) {
 
         processedGroups.push({
           movementType: record.movementType,
+          agent: record.agent,
+          scrapedAtTimes: new Set<number>([scrapTime]),
           scheduledTimeHistory
         });
       }
@@ -112,7 +127,21 @@ export function VesselHistory({ params }: { params: { name: string } }) {
     if (!uniqueMovements || uniqueMovements.length === 0) return [];
     
     // Sort chronologically (ascending) for processing
-    const chronoMovements = [...uniqueMovements].sort((a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime());
+    // Prioritize Arrival -> Shift -> Departure if scheduled times are within 12 hours of each other
+    const chronoMovements = [...uniqueMovements].sort((a, b) => {
+      const timeA = new Date(a.scheduledTime).getTime();
+      const timeB = new Date(b.scheduledTime).getTime();
+      
+      if (Math.abs(timeA - timeB) < 12 * 60 * 60 * 1000) {
+        const priority = { 'Arrival': 1, 'Shift': 2, 'Departure': 3 };
+        const pA = priority[a.movementType as 'Arrival' | 'Shift' | 'Departure'] || 4;
+        const pB = priority[b.movementType as 'Arrival' | 'Shift' | 'Departure'] || 4;
+        if (pA !== pB) {
+          return pA - pB;
+        }
+      }
+      return timeA - timeB;
+    });
     
     const list: {
       id: string;

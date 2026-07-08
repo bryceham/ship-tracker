@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { vesselMovements } from '../db/schema';
-import { eq, desc, and, gt, inArray } from 'drizzle-orm';
+import { eq, desc, and, gt, lt, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 
 export interface ScrapedVessel {
@@ -59,21 +59,28 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
         vesselName: string;
         movementType: string;
         agent: string | null;
+        scrapedAtTimes: Set<number>;
         scheduledTimeHistory: Set<number>;
     }[] = [];
 
     for (const record of recentRecords) {
         // Group together DB entries that refer to the same physical movement
         // We look for all records that belong to the same update chain or fall within a 36-hour fallback window
-        const matchingGroup = processedGroups.find(g =>
-            g.vesselName === record.vesselName &&
-            g.movementType === record.movementType &&
-            g.agent === record.agent &&
-            (g.scheduledTimeHistory.has(record.scheduledTime.getTime()) ||
-             Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000))
-        );
+        const matchingGroup = processedGroups.find(g => {
+            if (g.vesselName !== record.vesselName || g.movementType !== record.movementType || g.agent !== record.agent) {
+                return false;
+            }
+            // Do not merge if they were scraped in the same run (within 1 minute of each other)
+            const fromSameScrape = Array.from(g.scrapedAtTimes).some(t => Math.abs(t - record.scrapedAt.getTime()) < 60 * 1000);
+            if (fromSameScrape) {
+                return false;
+            }
+            return g.scheduledTimeHistory.has(record.scheduledTime.getTime()) ||
+                   Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000);
+        });
 
         if (matchingGroup) {
+            matchingGroup.scrapedAtTimes.add(record.scrapedAt.getTime());
             matchingGroup.scheduledTimeHistory.add(record.scheduledTime.getTime());
             const prevVal = record.previousValue as Record<string, any> | null;
             if (prevVal && prevVal.scheduledTime) {
@@ -90,6 +97,7 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
                 vesselName: record.vesselName,
                 movementType: record.movementType,
                 agent: record.agent,
+                scrapedAtTimes: new Set<number>([record.scrapedAt.getTime()]),
                 scheduledTimeHistory
             });
 
