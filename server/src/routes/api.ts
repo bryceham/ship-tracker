@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { db } from '../db';
 import { vesselMovements } from '../db/schema';
-import { desc, eq, inArray, sql, gt, and, ne, lt } from 'drizzle-orm';
+import { desc, eq, inArray, sql, gt, and, ne, lt, lte } from 'drizzle-orm';
 
 const api = new Hono();
 
@@ -97,6 +97,104 @@ api.get('/schedule', async (c) => {
         if (item.changeType === 'REMOVED') return false;
         if (item.changeType === 'COMPLETED') {
             // Keep completed Arrival or Shift if the vessel still has an active/upcoming Departure
+            return (item.movementType === 'Arrival' || item.movementType === 'Shift') && activeVesselDepartures.has(item.vesselName);
+        }
+        return true;
+    });
+
+    return c.json(activeSchedule);
+});
+
+// GET /api/schedule/historical
+api.get('/schedule/historical', async (c) => {
+    const timestampQuery = c.req.query('timestamp');
+    if (!timestampQuery) {
+        return c.text('Missing timestamp query parameter', 400);
+    }
+
+    let targetTime: Date;
+    if (/^\d+$/.test(timestampQuery)) {
+        targetTime = new Date(parseInt(timestampQuery));
+    } else {
+        targetTime = new Date(timestampQuery);
+    }
+
+    if (isNaN(targetTime.getTime())) {
+        return c.text('Invalid timestamp format', 400);
+    }
+
+    // Load records scraped in the 14 days preceding the target time
+    const fourteenDaysBeforeTarget = new Date(targetTime.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+    const records = await db.query.vesselMovements.findMany({
+        where: and(
+            lte(vesselMovements.scrapedAt, targetTime),
+            gt(vesselMovements.scrapedAt, fourteenDaysBeforeTarget)
+        ),
+        orderBy: [desc(vesselMovements.scrapedAt)],
+    });
+
+    // Deduplicate physical movements (getting only the latest scraped update/completed/new state of each as of targetTime)
+    const uniqueMovements: typeof records = [];
+    const processedGroups: {
+        vesselName: string;
+        movementType: string;
+        agent: string | null;
+        scrapedAtTimes: Set<number>;
+        scheduledTimeHistory: Set<number>;
+    }[] = [];
+
+    for (const record of records) {
+        const matchingGroup = processedGroups.find(g => {
+            if (g.vesselName !== record.vesselName || g.movementType !== record.movementType || g.agent !== record.agent) {
+                return false;
+            }
+            const fromSameScrape = Array.from(g.scrapedAtTimes).some(t => Math.abs(t - record.scrapedAt.getTime()) < 60 * 1000);
+            if (fromSameScrape) {
+                return false;
+            }
+            return g.scheduledTimeHistory.has(record.scheduledTime.getTime()) ||
+                   Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000);
+        });
+
+        if (matchingGroup) {
+            matchingGroup.scrapedAtTimes.add(record.scrapedAt.getTime());
+            matchingGroup.scheduledTimeHistory.add(record.scheduledTime.getTime());
+            const prevVal = record.previousValue as Record<string, any> | null;
+            if (prevVal && prevVal.scheduledTime) {
+                matchingGroup.scheduledTimeHistory.add(new Date(prevVal.scheduledTime).getTime());
+            }
+        } else {
+            uniqueMovements.push(record);
+
+            const scheduledTimeHistory = new Set<number>([record.scheduledTime.getTime()]);
+            const prevVal = record.previousValue as Record<string, any> | null;
+            if (prevVal && prevVal.scheduledTime) {
+                scheduledTimeHistory.add(new Date(prevVal.scheduledTime).getTime());
+            }
+
+            processedGroups.push({
+                vesselName: record.vesselName,
+                movementType: record.movementType,
+                agent: record.agent,
+                scrapedAtTimes: new Set<number>([record.scrapedAt.getTime()]),
+                scheduledTimeHistory
+            });
+        }
+    }
+
+    // A schedule item is active if it's not REMOVED or COMPLETED as of targetTime.
+    // However, if a vessel has an active Departure, we also want to keep its corresponding Arrival (even if COMPLETED)
+    // so that the frontend can compute the correct dwell/stay time.
+    const activeVesselDepartures = new Set(
+        uniqueMovements
+            .filter(item => item.movementType === 'Departure' && item.changeType !== 'REMOVED' && item.changeType !== 'COMPLETED')
+            .map(item => item.vesselName)
+    );
+
+    const activeSchedule = uniqueMovements.filter(item => {
+        if (item.changeType === 'REMOVED') return false;
+        if (item.changeType === 'COMPLETED') {
             return (item.movementType === 'Arrival' || item.movementType === 'Shift') && activeVesselDepartures.has(item.vesselName);
         }
         return true;
