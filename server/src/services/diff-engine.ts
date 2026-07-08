@@ -55,7 +55,12 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
     }
 
     const activeMovements: ActiveMovement[] = [];
-    const processedGroups: { vesselName: string; movementType: string; scheduledTimeHistory: Set<number> }[] = [];
+    const processedGroups: {
+        vesselName: string;
+        movementType: string;
+        agent: string | null;
+        scheduledTimeHistory: Set<number>;
+    }[] = [];
 
     for (const record of recentRecords) {
         // Group together DB entries that refer to the same physical movement
@@ -63,6 +68,7 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
         const matchingGroup = processedGroups.find(g =>
             g.vesselName === record.vesselName &&
             g.movementType === record.movementType &&
+            g.agent === record.agent &&
             (g.scheduledTimeHistory.has(record.scheduledTime.getTime()) ||
              Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000))
         );
@@ -83,6 +89,7 @@ export async function processScrapedData(scrapedVessels: ScrapedVessel[]) {
             processedGroups.push({
                 vesselName: record.vesselName,
                 movementType: record.movementType,
+                agent: record.agent,
                 scheduledTimeHistory
             });
 
