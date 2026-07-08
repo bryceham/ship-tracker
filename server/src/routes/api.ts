@@ -200,7 +200,20 @@ api.get('/schedule/historical', async (c) => {
         return true;
     });
 
-    return c.json(activeSchedule);
+    const cleanedSchedule = activeSchedule.map(item => ({
+        id: item.id,
+        vesselName: item.vesselName,
+        movementType: item.movementType,
+        scheduledTime: item.scheduledTime,
+        origin: item.origin,
+        destination: item.destination,
+        expectedTime: item.expectedTime,
+        vesselType: item.vesselType,
+        agent: item.agent,
+        status: item.status
+    }));
+
+    return c.json(cleanedSchedule);
 });
 
 // GET /api/removed
