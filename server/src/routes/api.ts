@@ -55,7 +55,7 @@ api.get('/schedule', async (c) => {
                 return false;
             }
             return g.scheduledTimeHistory.has(record.scheduledTime.getTime()) ||
-                   Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000);
+                Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000);
         });
 
         if (matchingGroup) {
@@ -154,7 +154,7 @@ api.get('/schedule/historical', async (c) => {
                 return false;
             }
             return g.scheduledTimeHistory.has(record.scheduledTime.getTime()) ||
-                   Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000);
+                Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000);
         });
 
         if (matchingGroup) {
@@ -201,7 +201,6 @@ api.get('/schedule/historical', async (c) => {
     });
 
     const cleanedSchedule = activeSchedule.map(item => ({
-        id: item.id,
         vesselName: item.vesselName,
         movementType: item.movementType,
         scheduledTime: item.scheduledTime,
@@ -297,10 +296,10 @@ api.get('/stats/agents', async (c) => {
         const historyReverse = [...history].reverse();
         for (const record of historyReverse) {
             if (record.id === completed.id) continue;
-            
+
             const currentPrevVal = currentRecord.previousValue as Record<string, any> | null;
             let isPrevious = false;
-            
+
             if (currentPrevVal && currentPrevVal.scheduledTime) {
                 const prevTime = new Date(currentPrevVal.scheduledTime).getTime();
                 if (new Date(record.scheduledTime).getTime() === prevTime) {
@@ -313,7 +312,7 @@ api.get('/stats/agents', async (c) => {
                     isPrevious = true;
                 }
             }
-            
+
             if (isPrevious) {
                 matchingRecords.push(record);
                 currentRecord = record; // step backward
@@ -323,7 +322,7 @@ api.get('/stats/agents', async (c) => {
         // Find the oldest record in this matched chain
         if (matchingRecords.length > 0) {
             const originalRecord = matchingRecords[matchingRecords.length - 1];
-            
+
             const originalTime = new Date(originalRecord.scheduledTime).getTime();
             const completedTime = new Date(completed.scheduledTime).getTime();
             const totalDriftMinutes = Math.round((completedTime - originalTime) / (1000 * 60));
@@ -374,7 +373,7 @@ api.get('/stats/berths', async (c) => {
         }
 
         const stats = berthStats[berth];
-        
+
         // Count only completed movements towards total movements
         if (record.changeType === 'COMPLETED') {
             stats.total++;
@@ -426,12 +425,12 @@ api.get('/stats/berths', async (c) => {
     const berthTurnaroundStats: Record<string, { typicalMinTurnaroundMinutes: number; avgTurnaroundMinutes: number }> = {};
     Object.entries(berthMovements).forEach(([berth, items]) => {
         items.sort((a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime());
-        
+
         const turnarounds: number[] = [];
         for (let i = 0; i < items.length - 1; i++) {
             const current = items[i];
             const next = items[i + 1];
-            
+
             if (current.movementType === 'Departure' && next.movementType === 'Arrival') {
                 const diffMs = new Date(next.scheduledTime).getTime() - new Date(current.scheduledTime).getTime();
                 if (diffMs > 0) {
@@ -449,8 +448,8 @@ api.get('/stats/berths', async (c) => {
                 avgTurnaroundMinutes: Math.round(avg),
             };
         } else {
-            const avg = turnarounds.length > 0 
-                ? turnarounds.reduce((a, b) => a + b, 0) / turnarounds.length 
+            const avg = turnarounds.length > 0
+                ? turnarounds.reduce((a, b) => a + b, 0) / turnarounds.length
                 : 180;
             berthTurnaroundStats[berth] = {
                 typicalMinTurnaroundMinutes: 180, // Default to 3 hours
@@ -530,10 +529,10 @@ api.get('/stats/drift', async (c) => {
         const historyReverse = [...history].reverse();
         for (const record of historyReverse) {
             if (record.id === movementRecord.id) continue;
-            
+
             const currentPrevVal = currentRecord.previousValue as Record<string, any> | null;
             let isPrevious = false;
-            
+
             if (currentPrevVal && currentPrevVal.scheduledTime) {
                 const prevTime = new Date(currentPrevVal.scheduledTime).getTime();
                 if (new Date(record.scheduledTime).getTime() === prevTime) {
@@ -545,7 +544,7 @@ api.get('/stats/drift', async (c) => {
                     isPrevious = true;
                 }
             }
-            
+
             if (isPrevious) {
                 matchingRecords.push(record);
                 currentRecord = record;
@@ -584,7 +583,7 @@ api.get('/stats/drift', async (c) => {
             if (completedArrival) {
                 const originalArrival = await getOriginalTime(completedArrival);
                 const actualArrival = new Date(completedArrival.scheduledTime).getTime();
-                
+
                 const actualStayHours = parseFloat(((completedTime - actualArrival) / (1000 * 60 * 60)).toFixed(1));
                 const plannedStayHours = parseFloat(((originalTime - originalArrival) / (1000 * 60 * 60)).toFixed(1));
                 const driftHours = parseFloat((actualStayHours - plannedStayHours).toFixed(1));
@@ -698,7 +697,7 @@ api.get('/stats/berth-utilization', async (c) => {
                 return false;
             }
             return g.scheduledTimeHistory.has(record.scheduledTime.getTime()) ||
-                   Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000);
+                Array.from(g.scheduledTimeHistory).some(t => Math.abs(t - record.scheduledTime.getTime()) < 36 * 60 * 60 * 1000);
         });
 
         if (matchingGroup) {
